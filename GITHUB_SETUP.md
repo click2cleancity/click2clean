@@ -1,18 +1,51 @@
-# GitHub: new project setup (Click to Clean)
+# Step-by-step: New GitHub repo for Click to Clean
 
-This file is **only** for publishing this repo to GitHub and opening the app on your phone. Your code lives in this folder as a **standalone project** (not tied to other Cursor workspaces).
+Use this checklist the first time you put **this project folder** on GitHub.  
+Project path: `Documents/Clean city/click-to-clean`
 
-## 1. Create a new repository on GitHub
+---
 
-1. Open [github.com/new](https://github.com/new).
-2. **Repository name:** e.g. `click-to-clean` (you can use any name).
-3. Choose **Public** (needed for free GitHub Pages, unless you use a paid/private Pages setup).
-4. **Do not** add a README, `.gitignore`, or license (this project already has them).
-5. Click **Create repository**.
+## Before you start
 
-## 2. Push this folder from your Mac (first time)
+- A [GitHub](https://github.com) account (sign up if you don’t have one).
+- [Git](https://git-scm.com) installed on your Mac (Terminal: `git --version` should print a version).
 
-In Terminal, run (replace `YOUR_USER` and `click-to-clean` if your repo name differs):
+---
+
+## Step 1 — Create an empty repository on GitHub
+
+1. Log in to GitHub.
+2. Click the **+** (top right) → **New repository**  
+   Or open: **https://github.com/new**
+3. **Repository name:** choose one, e.g. `click-to-clean` (remember it; it becomes part of your site URL).
+4. **Description:** optional.
+5. Select **Public** (simplest for free GitHub Pages).
+6. **Important:** leave these **unchecked**:
+   - Add a README  
+   - Add .gitignore  
+   - Choose a license  
+   (This repo already has README, `.gitignore`, and code.)
+7. Click **Create repository**.
+
+GitHub will show a page with setup hints. **Keep that tab open** — you need the repo URL in Step 3.
+
+---
+
+## Step 2 — Open Terminal and go to the project
+
+```bash
+cd "/Users/anand1.bhatt/Documents/Clean city/click-to-clean"
+```
+
+---
+
+## Step 3 — Connect your folder to GitHub and push
+
+You need your **GitHub username** and the **exact repo name** you chose.
+
+### 3a — If this folder is **not** a git repo yet (first time ever)
+
+Run:
 
 ```bash
 cd "/Users/anand1.bhatt/Documents/Clean city/click-to-clean"
@@ -20,46 +53,110 @@ cd "/Users/anand1.bhatt/Documents/Clean city/click-to-clean"
 git init
 git branch -M main
 git add .
-git commit -m "Initial commit: Click to Clean citizen app"
-
-git remote add origin https://github.com/YOUR_USER/click-to-clean.git
-git push -u origin main
+git commit -m "Initial commit: Click to Clean"
 ```
 
-If you use SSH:
+### 3b — If you **already** ran `git init` and committed (skip 3a)
+
+Only add the remote and push (Step 3c).
+
+### 3c — Add `origin` and push (everyone does this)
+
+Replace `YOUR_GITHUB_USERNAME` and `YOUR_REPO_NAME`:
+
+**HTTPS (simplest):**
 
 ```bash
-git remote add origin git@github.com:YOUR_USER/click-to-clean.git
+git remote add origin https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME.git
 git push -u origin main
 ```
 
-Use a **Personal Access Token** as the password if GitHub asks (HTTPS), or use the GitHub CLI: `gh auth login`.
+**SSH** (if you use SSH keys with GitHub):
 
-## 3. Turn on GitHub Pages (for phone / browser URL)
-
-After the first successful push:
-
-1. Repo → **Settings** → **Pages**.
-2. Under **Build and deployment** → **Source**, pick **GitHub Actions** (not “Deploy from a branch” for this workflow).
-3. Save if needed.
-
-The workflow in `.github/workflows/deploy-pages.yml` runs on every push to `main`, builds with `VITE_BASE=/repository-name/`, and deploys the `dist` folder.
-
-4. Repo → **Actions** → open the latest **Deploy to GitHub Pages** run → wait until it is green.
-
-Your site URL will look like:
-
-```text
-https://YOUR_USER.github.io/click-to-clean/
+```bash
+git remote add origin git@github.com:YOUR_GITHUB_USERNAME/YOUR_REPO_NAME.git
+git push -u origin main
 ```
 
-Open that link on your phone (Safari/Chrome). The app is a client-only PWA-style SPA; location/camera need **HTTPS**, which GitHub Pages provides.
+**If `git remote add` fails** with “remote origin already exists”:
 
-## 4. If you rename the repository
+```bash
+git remote remove origin
+```
 
-The build uses the repo name as the URL path (`VITE_BASE`). If you rename the repo on GitHub, push again to `main` so Actions rebuilds with the new base path.
+Then run the `git remote add origin ...` line again.
 
-## 5. Local dev (unchanged)
+### 3d — Login when GitHub asks (HTTPS)
+
+- Username: your GitHub username  
+- Password: **not** your GitHub password — use a **[Personal Access Token](https://github.com/settings/tokens)** (classic: enable `repo` scope).  
+  Create token: GitHub → **Settings** → **Developer settings** → **Personal access tokens**.
+
+---
+
+## Step 4 — Turn on GitHub Pages (site on your phone)
+
+1. Open your repo on GitHub.
+2. Click **Settings** (repo menu).
+3. Left sidebar → **Pages**.
+4. Under **Build and deployment** → **Source**, choose **GitHub Actions** (not “Deploy from a branch”).
+5. If GitHub asks to approve workflows the first time: **Actions** tab → approve **Workflow permissions** if prompted.
+
+---
+
+## Step 5 — Wait for the first deployment
+
+1. Click the **Actions** tab in your repo.
+2. Open the workflow **Deploy to GitHub Pages**.
+3. Wait until the latest run has a **green** checkmark (can take 1–3 minutes).
+
+If it fails, open the failed job and read the error (often Node version or permissions — fix and push again).
+
+---
+
+## Step 6 — Open your live app
+
+Your site URL (replace with your username and repo name):
+
+```text
+https://YOUR_GITHUB_USERNAME.github.io/YOUR_REPO_NAME/
+```
+
+Example: user `alex`, repo `click-to-clean` →  
+`https://alex.github.io/click-to-clean/`
+
+Open that URL on your **phone browser** (Safari or Chrome). Location and camera need **HTTPS** — GitHub Pages provides that.
+
+---
+
+## Step 7 — Future changes
+
+After you edit code locally:
+
+```bash
+cd "/Users/anand1.bhatt/Documents/Clean city/click-to-clean"
+git add .
+git commit -m "Describe your change"
+git push
+```
+
+Actions will rebuild and update the live site.
+
+---
+
+## Troubleshooting (short)
+
+| Problem | What to try |
+|--------|-------------|
+| `remote origin already exists` | `git remote remove origin` then add again |
+| Authentication failed (HTTPS) | Use a **Personal Access Token**, not account password |
+| Permission denied (SSH) | Add SSH key: GitHub → Settings → SSH keys, or use HTTPS instead |
+| Page is 404 | Wait 2–5 min after green Action; confirm Pages **Source** is **GitHub Actions** |
+| Blank / broken styles on Pages | Repo was renamed — push again so workflow rebuilds with new `VITE_BASE` |
+
+---
+
+## Local development (not GitHub)
 
 ```bash
 cd "/Users/anand1.bhatt/Documents/Clean city/click-to-clean"
@@ -67,17 +164,6 @@ npm install
 npm run dev
 ```
 
-Local dev uses `/` as base (no `VITE_BASE`).
-
-## 6. Optional: test a production build locally
-
-```bash
-VITE_BASE=/click-to-clean/ npm run build
-npx vite preview
-```
-
-(Replace `click-to-clean` with your actual repo name.)
-
 ---
 
-**Summary:** Create empty repo → `git init` / commit / `git remote` / `git push` → enable **Pages → GitHub Actions** → wait for Actions → use `https://<user>.github.io/<repo>/` on your phone.
+**Quick sequence:** GitHub **new empty repo** → Terminal **cd** → **git init / commit** (if needed) → **remote + push** → **Settings → Pages → GitHub Actions** → **Actions** wait for green → open **`https://USER.github.io/REPO/`**.
