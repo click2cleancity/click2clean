@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import Slider from '../lib/reactSlick'
 import { motion, AnimatePresence } from 'motion/react'
-import { ArrowLeft, Camera, CheckCircle2, ImageIcon, Loader2, MapPin, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, RefreshCw } from 'lucide-react'
 import { tips } from '../data/mock'
 import { tryGpsFromPhotoFile } from '../lib/exifGeo'
 import { requestLocation, mapsUrl, type GeoResult } from '../lib/geo'
@@ -14,9 +14,16 @@ const categories = ['Street garbage', 'Broken light', 'Full dustbin', 'Open drai
 
 type LocState = 'idle' | 'locating' | 'ready' | 'error'
 
+function shortLocationTitle(geo: GeoResult): string {
+  const raw = geo.label
+  const idx = raw.indexOf('·')
+  if (idx > 0) return raw.slice(idx + 1).trim() || raw
+  return raw.length > 42 ? `${raw.slice(0, 40)}…` : raw
+}
+
 export default function ReportFlow() {
   const nav = useNavigate()
-  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [step, setStep] = useState<1 | 2>(1)
   const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null)
   const [geo, setGeo] = useState<GeoResult | null>(null)
   const [geoSource, setGeoSource] = useState<'exif' | 'browser' | null>(null)
@@ -80,18 +87,35 @@ export default function ReportFlow() {
 
   function submit() {
     if (!geo || !photoDataUrl) return
-    addStoredReport({
+
+    const report = {
       id: reportId,
       title: category,
-      status: 'Submitted',
+      status: 'Submitted' as const,
       lat: geo.lat,
       lng: geo.lng,
       areaLabel: geo.label,
       createdAt: new Date().toISOString(),
       photoDataUrl,
       locationSource: geoSource ?? undefined,
-    })
-    addPoints(50)
+    }
+
+    try {
+      addStoredReport(report)
+    } catch {
+      try {
+        addStoredReport({ ...report, photoDataUrl: undefined })
+      } catch {
+        /* still navigate — ticket flow should not block on storage */
+      }
+    }
+
+    try {
+      addPoints(50)
+    } catch {
+      /* ignore */
+    }
+
     nav('/success', { replace: true, state: { reportId } })
   }
 
@@ -112,7 +136,7 @@ export default function ReportFlow() {
       </div>
 
       <div className="mb-6 flex gap-2" aria-hidden>
-        {([1, 2, 3] as const).map((s) => (
+        {([1, 2] as const).map((s) => (
           <div key={s} className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200/80">
             <motion.div
               className="h-full rounded-full bg-blue-600"
@@ -180,28 +204,27 @@ export default function ReportFlow() {
               </p>
 
               {photoDataUrl && locState === 'locating' ? (
-                <div className="mt-3 flex items-center gap-2 rounded-2xl bg-slate-100/90 px-3 py-4 text-sm text-slate-600">
+                <div className="mt-3 flex items-center gap-2 rounded-2xl bg-slate-100/90 px-3 py-3 text-sm text-slate-600">
                   <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-600" aria-hidden />
                   Pinpointing from photo GPS or device…
                 </div>
               ) : null}
 
               {photoDataUrl && locState === 'ready' && geo ? (
-                <div className="mt-3 flex items-start gap-2 rounded-2xl bg-emerald-50 px-3 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200/80">
-                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
-                  <div className="min-w-0">
-                    <p className="font-semibold">Location auto-detected</p>
-                    <a
-                      href={mapsUrl(geo.lat, geo.lng)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-1 inline-flex items-center gap-1 font-medium text-emerald-800 underline"
-                    >
-                      <MapPin className="h-4 w-4 shrink-0" />
-                      Open in Google Maps
-                    </a>
-                    <p className="mt-1 break-all font-mono text-xs text-emerald-800/90">{geo.label}</p>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-emerald-50/90 px-3 py-2.5 ring-1 ring-emerald-200/80">
+                  <div className="flex min-w-0 items-center gap-2 text-sm text-emerald-900">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
+                    <span className="truncate font-medium">{shortLocationTitle(geo)}</span>
                   </div>
+                  <a
+                    href={mapsUrl(geo.lat, geo.lng)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-blue-700 underline"
+                  >
+                    <MapPin className="h-4 w-4" aria-hidden />
+                    Map
+                  </a>
                 </div>
               ) : null}
 
@@ -257,7 +280,7 @@ export default function ReportFlow() {
           </motion.section>
         ) : null}
 
-        {step === 2 ? (
+        {step === 2 && geo && photoDataUrl ? (
           <motion.section
             key="s2"
             initial={{ opacity: 0, x: 20 }}
@@ -265,23 +288,53 @@ export default function ReportFlow() {
             exit={{ opacity: 0, x: -20 }}
             className="space-y-4"
           >
-            <div className="glass-panel-strong rounded-[28px] p-4">
-              <label className="block text-sm font-semibold text-slate-800" htmlFor="cat">
-                Category
-              </label>
-              <select
-                id="cat"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="mt-2 w-full rounded-2xl border-0 bg-slate-100/90 px-3 py-3 text-slate-900 outline-none ring-2 ring-transparent focus:ring-blue-500"
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="text-sm font-semibold text-blue-700 underline-offset-2 hover:underline"
+            >
+              Edit photo &amp; location
+            </button>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-white/60 px-3 py-2.5 ring-1 ring-slate-200/80">
+              <div className="flex min-w-0 items-center gap-2 text-sm text-slate-800">
+                <MapPin className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
+                <span className="truncate font-medium">{shortLocationTitle(geo)}</span>
+              </div>
+              <a
+                href={mapsUrl(geo.lat, geo.lng)}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 text-sm font-semibold text-blue-700 underline"
               >
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-              <label className="mt-4 block text-sm font-semibold text-slate-800" htmlFor="desc">
+                Open map
+              </a>
+            </div>
+
+            <div className="glass-panel-strong rounded-[28px] p-4">
+              <p className="text-sm font-semibold text-slate-800">Category</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {categories.map((c) => {
+                  const selected = category === c
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCategory(c)}
+                      className={[
+                        'rounded-full border-2 px-3.5 py-2 text-sm font-semibold transition',
+                        selected
+                          ? 'border-blue-600 bg-blue-600 text-white shadow-md'
+                          : 'border-slate-200 bg-white/80 text-slate-700 ring-1 ring-slate-200/80 hover:border-slate-300',
+                      ].join(' ')}
+                    >
+                      {c}
+                    </button>
+                  )
+                })}
+              </div>
+
+              <label className="mt-5 block text-sm font-semibold text-slate-800" htmlFor="desc">
                 Details
               </label>
               <textarea
@@ -292,79 +345,28 @@ export default function ReportFlow() {
                 placeholder="Describe what you see—landmarks help."
                 className="mt-2 w-full resize-none rounded-2xl border-0 bg-slate-100/90 px-3 py-3 text-sm text-slate-900 outline-none ring-2 ring-transparent focus:ring-blue-500"
               />
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="flex-1 rounded-full border border-slate-300 bg-white/80 py-3 font-semibold text-slate-800"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                onClick={() => setStep(3)}
-                className="flex-[2] rounded-full bg-blue-600 py-3 font-semibold text-white"
-              >
-                Review
-              </button>
-            </div>
-          </motion.section>
-        ) : null}
 
-        {step === 3 ? (
-          <motion.section
-            key="s3"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="space-y-4"
-          >
-            <div className="glass-panel-strong rounded-[28px] p-4">
-              <div className="flex gap-3">
-                {photoDataUrl ? (
-                  <img src={photoDataUrl} alt="" className="h-24 w-24 rounded-2xl object-cover ring-2 ring-white" />
-                ) : (
-                  <span className="flex h-24 w-24 items-center justify-center rounded-2xl bg-slate-200">
-                    <ImageIcon className="h-8 w-8 text-slate-500" />
-                  </span>
-                )}
+              <div className="mt-4 flex gap-3 rounded-2xl bg-slate-50/90 p-3 ring-1 ring-slate-200/80">
+                <img src={photoDataUrl} alt="" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
                 <div className="min-w-0">
-                  <p className="font-bold text-slate-900">{category}</p>
-                  <p className="mt-1 line-clamp-4 text-sm text-slate-600">{description || 'No extra notes.'}</p>
-                  {geo ? (
-                    <a
-                      href={mapsUrl(geo.lat, geo.lng)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-blue-700"
-                    >
-                      <MapPin className="h-4 w-4" />
-                      {geo.label}
-                    </a>
-                  ) : null}
+                  <p className="text-xs font-semibold uppercase text-slate-500">Preview</p>
+                  <p className="mt-0.5 font-semibold text-slate-900">{category}</p>
+                  <p className="line-clamp-2 text-xs text-slate-600">{description || 'Add details above.'}</p>
                 </div>
               </div>
-              <p className="mt-4 rounded-2xl bg-slate-100 px-3 py-2 text-xs text-slate-600">
-                Ticket <span className="font-mono font-semibold text-slate-900">{reportId}</span>
+
+              <p className="mt-4 text-center text-xs text-slate-500">
+                Ticket <span className="font-mono font-semibold text-slate-700">{reportId}</span>
               </p>
             </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="flex-1 rounded-full border border-slate-300 bg-white/80 py-3 font-semibold text-slate-800"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                onClick={submit}
-                className="flex-[2] rounded-full bg-lime-500 py-3 font-semibold text-white shadow-md"
-              >
-                Submit &amp; raise ticket
-              </button>
-            </div>
+
+            <button
+              type="button"
+              onClick={submit}
+              className="w-full rounded-full bg-lime-500 py-3.5 text-base font-semibold text-white shadow-md active:scale-[0.99]"
+            >
+              Submit &amp; raise ticket
+            </button>
           </motion.section>
         ) : null}
       </AnimatePresence>
