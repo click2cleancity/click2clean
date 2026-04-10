@@ -6,6 +6,7 @@ import { inspirationSlides } from '../data/mock'
 import { mapsUrl } from '../lib/geo'
 import { friendlyAreaLabel } from '../lib/reverseGeocode'
 import { formatReportWhen } from '../lib/time'
+import { HotSpotSection } from '../components/ReportHotspotMap'
 import { getPoints, getStoredReports } from '../lib/storage'
 import 'slick-carousel/slick/slick.css'
 import 'slick-carousel/slick/slick-theme.css'
@@ -57,6 +58,10 @@ export default function Home() {
           <p className="text-lg font-bold text-slate-900">{resolvedCount}</p>
           <p className="text-[11px] font-medium leading-tight text-slate-600">Resolved</p>
         </div>
+      </motion.section>
+
+      <motion.section variants={item}>
+        <HotSpotSection reports={reports} />
       </motion.section>
 
       <motion.section variants={item}>
