@@ -1,10 +1,12 @@
 import { Link } from 'react-router-dom'
 import Slider from '../lib/reactSlick'
 import { motion } from 'motion/react'
-import { MapPin, Sparkles } from 'lucide-react'
-import { communityReports, heroStats, inspirationSlides } from '../data/mock'
+import { BookOpen, ChevronRight, MapPin, Sparkles } from 'lucide-react'
+import { inspirationSlides } from '../data/mock'
 import { mapsUrl } from '../lib/geo'
 import { friendlyAreaLabel } from '../lib/reverseGeocode'
+import { formatReportWhen } from '../lib/time'
+import { getPoints, getStoredReports } from '../lib/storage'
 import 'slick-carousel/slick/slick.css'
 import 'slick-carousel/slick/slick-theme.css'
 
@@ -12,6 +14,13 @@ const stagger = { visible: { transition: { staggerChildren: 0.08 } } }
 const item = { hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }
 
 export default function Home() {
+  const reports = [...getStoredReports()].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )
+  const points = getPoints()
+  const resolvedCount = reports.filter((r) => r.status === 'Resolved').length
+  const preview = reports.slice(0, 5)
+
   return (
     <motion.div initial="hidden" animate="visible" variants={stagger} className="space-y-5">
       <motion.section variants={item} className="glass-panel overflow-hidden rounded-[28px] p-5">
@@ -36,67 +45,94 @@ export default function Home() {
       </motion.section>
 
       <motion.section variants={item} className="grid grid-cols-3 gap-2">
-        {heroStats.map((s) => (
-          <div key={s.label} className="glass-panel rounded-2xl p-3 text-center">
-            <p className="text-lg font-bold text-slate-900">{s.value}</p>
-            <p className="text-[11px] font-medium leading-tight text-slate-600">{s.label}</p>
-          </div>
-        ))}
+        <div className="glass-panel rounded-2xl p-3 text-center">
+          <p className="text-lg font-bold text-slate-900">{reports.length}</p>
+          <p className="text-[11px] font-medium leading-tight text-slate-600">Your reports</p>
+        </div>
+        <div className="glass-panel rounded-2xl p-3 text-center">
+          <p className="text-lg font-bold text-slate-900">{points}</p>
+          <p className="text-[11px] font-medium leading-tight text-slate-600">Points</p>
+        </div>
+        <div className="glass-panel rounded-2xl p-3 text-center">
+          <p className="text-lg font-bold text-slate-900">{resolvedCount}</p>
+          <p className="text-[11px] font-medium leading-tight text-slate-600">Resolved</p>
+        </div>
       </motion.section>
 
       <motion.section variants={item}>
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-lg font-bold text-slate-900">Community Reports</h3>
-          <Link to="/issues" className="text-sm font-semibold text-blue-700">
-            View all
-          </Link>
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="text-lg font-bold text-slate-900">Your reports</h3>
+          {reports.length > 0 ? (
+            <Link to="/issues" className="shrink-0 text-sm font-semibold text-blue-700">
+              View all
+            </Link>
+          ) : null}
         </div>
         <div className="space-y-2">
-          {communityReports.map((r) => (
-            <article key={r.id} className="glass-panel flex gap-3 rounded-2xl p-3">
-              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-slate-200 ring-1 ring-slate-200/80">
-                <img
-                  src={r.photoUrl}
-                  alt=""
-                  className="h-full w-full object-cover object-center"
-                  loading="lazy"
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold text-slate-900">{r.title}</p>
-                <a
-                  href={mapsUrl(r.lat, r.lng)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-0.5 inline-flex max-w-full items-center gap-1 truncate text-sm font-medium text-blue-700 underline-offset-2 hover:underline"
-                >
-                  <MapPin className="h-4 w-4 shrink-0" aria-hidden />
-                  <span className="truncate">{friendlyAreaLabel(r.area)}</span>
-                </a>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                  <span>{r.time}</span>
-                  <span
-                    className={[
-                      'rounded-full px-2 py-0.5 font-semibold',
-                      r.status === 'Resolved'
-                        ? 'bg-emerald-100 text-emerald-800'
-                        : r.status === 'In progress'
-                          ? 'bg-amber-100 text-amber-900'
-                          : 'bg-slate-200 text-slate-800',
-                    ].join(' ')}
-                  >
-                    {r.status}
-                  </span>
+          {preview.length === 0 ? (
+            <div className="glass-panel rounded-2xl p-5 text-center">
+              <p className="text-sm font-medium text-slate-700">No reports yet</p>
+              <p className="mt-1 text-xs text-slate-600">Capture an issue on the street to see it here.</p>
+              <Link
+                to="/report"
+                className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-blue-600 py-3 text-sm font-semibold text-white shadow-md"
+              >
+                New report
+              </Link>
+            </div>
+          ) : (
+            preview.map((r) => (
+              <article key={r.id} className="glass-panel flex gap-3 rounded-2xl p-3">
+                <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-slate-200 ring-1 ring-slate-200/80">
+                  {r.photoDataUrl ? (
+                    <img
+                      src={r.photoDataUrl}
+                      alt=""
+                      className="h-full w-full object-cover object-center"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[10px] font-medium text-slate-500">
+                      No photo
+                    </div>
+                  )}
                 </div>
-              </div>
-            </article>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-slate-900">{r.title}</p>
+                  <a
+                    href={mapsUrl(r.lat, r.lng)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-0.5 inline-flex max-w-full items-center gap-1 truncate text-sm font-medium text-blue-700 underline-offset-2 hover:underline"
+                  >
+                    <MapPin className="h-4 w-4 shrink-0" aria-hidden />
+                    <span className="truncate">{friendlyAreaLabel(r.areaLabel)}</span>
+                  </a>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                    <span>{formatReportWhen(r.createdAt)}</span>
+                    <span
+                      className={[
+                        'rounded-full px-2 py-0.5 font-semibold',
+                        r.status === 'Resolved'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : r.status === 'In progress'
+                            ? 'bg-amber-100 text-amber-900'
+                            : 'bg-slate-200 text-slate-800',
+                      ].join(' ')}
+                    >
+                      {r.status}
+                    </span>
+                  </div>
+                </div>
+              </article>
+            ))
+          )}
         </div>
       </motion.section>
 
       <motion.section variants={item}>
-        <h3 className="mb-2 text-lg font-bold text-slate-900">Daily Inspiration</h3>
-        <div className="glass-panel rounded-[24px] p-2">
+        <h3 className="mb-2 text-lg font-bold text-slate-900">Daily inspiration</h3>
+        <div className="glass-panel inspiration-panel overflow-hidden rounded-[24px] p-0">
           <Slider
             dots
             infinite
@@ -106,14 +142,17 @@ export default function Home() {
             autoplay
             autoplaySpeed={4500}
             arrows={false}
+            className="inspiration-slider"
           >
             {inspirationSlides.map((slide) => (
-              <div key={slide.title} className="px-1 pb-6">
+              <div key={slide.title} className="outline-none">
                 <div
-                  className={`rounded-3xl bg-gradient-to-br ${slide.gradient} p-5 text-white shadow-md`}
+                  className={`flex min-h-[168px] w-full flex-col justify-center bg-gradient-to-br px-6 py-8 text-white shadow-inner ${slide.gradient}`}
                 >
-                  <p className="text-lg font-bold">{slide.title}</p>
-                  <p className="mt-2 text-sm text-white/95">{slide.body}</p>
+                  <p className="text-xl font-bold leading-tight drop-shadow-sm">{slide.title}</p>
+                  <p className="mt-3 max-w-[20rem] text-sm leading-relaxed text-white/95 drop-shadow-sm">
+                    {slide.body}
+                  </p>
                 </div>
               </div>
             ))}
@@ -121,11 +160,20 @@ export default function Home() {
         </div>
       </motion.section>
 
-      <motion.section variants={item} className="rounded-2xl border border-dashed border-slate-300/80 bg-white/40 p-4 text-center text-sm text-slate-600">
-        <Link to="/educate" className="font-semibold text-blue-700">
-          Learn how reporting helps
+      <motion.section variants={item}>
+        <Link
+          to="/educate"
+          className="group glass-panel flex items-center gap-4 rounded-2xl p-4 shadow-sm ring-1 ring-white/80 transition hover:ring-2 hover:ring-blue-300/60"
+        >
+          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white shadow-md">
+            <BookOpen className="h-7 w-7" aria-hidden />
+          </div>
+          <div className="min-w-0 flex-1 text-left">
+            <p className="font-bold text-slate-900">Learn how reporting helps</p>
+            <p className="mt-0.5 text-sm text-slate-600">Photos, safety &amp; how cities triage issues.</p>
+          </div>
+          <ChevronRight className="h-5 w-5 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-blue-600" aria-hidden />
         </Link>
-        <span> — short reads, big impact.</span>
       </motion.section>
     </motion.div>
   )

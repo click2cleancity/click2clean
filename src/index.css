@@ -55,3 +55,22 @@ body {
 .slick-dots li.slick-active button:before {
   opacity: 1;
 }
+
+/* Daily inspiration: full-bleed banner inside glass card */
+.inspiration-panel .inspiration-slider .slick-list {
+  border-radius: 1rem;
+  overflow: hidden;
+}
+.inspiration-slider .slick-slide > div {
+  height: 100%;
+}
+.inspiration-slider .slick-dots {
+  bottom: 10px;
+}
+.inspiration-slider .slick-dots li button:before {
+  color: #ffffff !important;
+  opacity: 0.45;
+}
+.inspiration-slider .slick-dots li.slick-active button:before {
+  opacity: 0.95;
+}

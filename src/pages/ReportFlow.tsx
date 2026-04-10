@@ -6,6 +6,7 @@ import { ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, RefreshCw } from 'luc
 import { tips } from '../data/mock'
 import { tryGpsFromPhotoFile } from '../lib/exifGeo'
 import { requestLocation, mapsUrl, type GeoResult } from '../lib/geo'
+import { compressDataUrlToJpeg } from '../lib/imageCompress'
 import { friendlyAreaLabel } from '../lib/reverseGeocode'
 import { addPoints, addStoredReport } from '../lib/storage'
 import 'slick-carousel/slick/slick.css'
@@ -85,8 +86,15 @@ export default function ReportFlow() {
     }
   }
 
-  function submit() {
+  async function submit() {
     if (!geo || !photoDataUrl) return
+
+    let photoToStore = photoDataUrl
+    try {
+      photoToStore = await compressDataUrlToJpeg(photoDataUrl)
+    } catch {
+      /* use original if compression fails */
+    }
 
     const report = {
       id: reportId,
@@ -96,7 +104,7 @@ export default function ReportFlow() {
       lng: geo.lng,
       areaLabel: geo.label,
       createdAt: new Date().toISOString(),
-      photoDataUrl,
+      photoDataUrl: photoToStore,
       locationSource: geoSource ?? undefined,
     }
 
@@ -104,9 +112,14 @@ export default function ReportFlow() {
       addStoredReport(report)
     } catch {
       try {
-        addStoredReport({ ...report, photoDataUrl: undefined })
+        const smaller = await compressDataUrlToJpeg(photoDataUrl, 720, 0.75).catch(() => photoToStore)
+        addStoredReport({ ...report, photoDataUrl: smaller })
       } catch {
-        /* still navigate — ticket flow should not block on storage */
+        try {
+          addStoredReport({ ...report, photoDataUrl: undefined })
+        } catch {
+          /* still navigate */
+        }
       }
     }
 
@@ -377,7 +390,7 @@ export default function ReportFlow() {
 
             <button
               type="button"
-              onClick={submit}
+              onClick={() => void submit()}
               className="w-full rounded-full bg-lime-500 py-3.5 text-base font-semibold text-white shadow-md active:scale-[0.99]"
             >
               Submit &amp; raise ticket
