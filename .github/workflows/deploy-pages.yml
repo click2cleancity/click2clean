@@ -5,6 +5,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  workflow_dispatch: # lets you run deploy from Actions → Run workflow
 
 permissions:
   contents: read
