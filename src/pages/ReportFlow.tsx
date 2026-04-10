@@ -6,6 +6,7 @@ import { ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, RefreshCw } from 'luc
 import { tips } from '../data/mock'
 import { tryGpsFromPhotoFile } from '../lib/exifGeo'
 import { requestLocation, mapsUrl, type GeoResult } from '../lib/geo'
+import { friendlyAreaLabel } from '../lib/reverseGeocode'
 import { addPoints, addStoredReport } from '../lib/storage'
 import 'slick-carousel/slick/slick.css'
 import 'slick-carousel/slick/slick-theme.css'
@@ -14,11 +15,10 @@ const categories = ['Street garbage', 'Broken light', 'Full dustbin', 'Open drai
 
 type LocState = 'idle' | 'locating' | 'ready' | 'error'
 
-function shortLocationTitle(geo: GeoResult): string {
-  const raw = geo.label
-  const idx = raw.indexOf('·')
-  if (idx > 0) return raw.slice(idx + 1).trim() || raw
-  return raw.length > 42 ? `${raw.slice(0, 40)}…` : raw
+function placeLine(label: string, maxLen = 52): string {
+  const s = friendlyAreaLabel(label).trim()
+  if (s.length <= maxLen) return s
+  return `${s.slice(0, maxLen - 1)}…`
 }
 
 export default function ReportFlow() {
@@ -160,7 +160,14 @@ export default function ReportFlow() {
             <div className="glass-panel-strong rounded-[28px] p-4">
               <p className="text-sm font-semibold text-slate-800">Photo</p>
               <p className="mt-1 text-sm text-slate-600">Capture the issue clearly—avoid people&apos;s faces.</p>
-              <label className="mt-4 flex cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-blue-300/80 bg-sky-50/80 py-10">
+              <label
+                className={[
+                  'mt-4 block w-full cursor-pointer rounded-3xl',
+                  photoDataUrl
+                    ? 'overflow-hidden ring-1 ring-slate-200/90'
+                    : 'flex flex-col items-center justify-center border-2 border-dashed border-blue-300/80 bg-sky-50/80 py-12',
+                ].join(' ')}
+              >
                 <input
                   type="file"
                   accept="image/*"
@@ -169,7 +176,11 @@ export default function ReportFlow() {
                   onChange={onCaptureChange}
                 />
                 {photoDataUrl ? (
-                  <img src={photoDataUrl} alt="Captured issue" className="max-h-56 w-full rounded-2xl object-cover" />
+                  <img
+                    src={photoDataUrl}
+                    alt="Captured issue"
+                    className="block max-h-[min(42vh,300px)] w-full object-cover object-center"
+                  />
                 ) : (
                   <>
                     <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-blue-100 text-blue-700">
@@ -197,11 +208,9 @@ export default function ReportFlow() {
                   </span>
                 ) : null}
               </div>
-              <p className="mt-1 text-sm text-slate-600">
-                {photoDataUrl
-                  ? 'GPS from the image when available; otherwise we use device location (permission may be requested).'
-                  : 'After you capture a photo, we detect location automatically.'}
-              </p>
+              {!photoDataUrl ? (
+                <p className="mt-1 text-sm text-slate-600">Location is added after you capture a photo.</p>
+              ) : null}
 
               {photoDataUrl && locState === 'locating' ? (
                 <div className="mt-3 flex items-center gap-2 rounded-2xl bg-slate-100/90 px-3 py-3 text-sm text-slate-600">
@@ -214,7 +223,7 @@ export default function ReportFlow() {
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-emerald-50/90 px-3 py-2.5 ring-1 ring-emerald-200/80">
                   <div className="flex min-w-0 items-center gap-2 text-sm text-emerald-900">
                     <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
-                    <span className="truncate font-medium">{shortLocationTitle(geo)}</span>
+                    <span className="truncate font-medium">{placeLine(geo.label)}</span>
                   </div>
                   <a
                     href={mapsUrl(geo.lat, geo.lng)}
@@ -299,7 +308,7 @@ export default function ReportFlow() {
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-white/60 px-3 py-2.5 ring-1 ring-slate-200/80">
               <div className="flex min-w-0 items-center gap-2 text-sm text-slate-800">
                 <MapPin className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
-                <span className="truncate font-medium">{shortLocationTitle(geo)}</span>
+                <span className="truncate font-medium">{placeLine(geo.label)}</span>
               </div>
               <a
                 href={mapsUrl(geo.lat, geo.lng)}
@@ -347,7 +356,13 @@ export default function ReportFlow() {
               />
 
               <div className="mt-4 flex gap-3 rounded-2xl bg-slate-50/90 p-3 ring-1 ring-slate-200/80">
-                <img src={photoDataUrl} alt="" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-200">
+                  <img
+                    src={photoDataUrl}
+                    alt=""
+                    className="h-full w-full object-cover object-center"
+                  />
+                </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase text-slate-500">Preview</p>
                   <p className="mt-0.5 font-semibold text-slate-900">{category}</p>

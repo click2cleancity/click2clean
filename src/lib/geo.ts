@@ -1,3 +1,5 @@
+import { reverseGeocodeLabel } from './reverseGeocode'
+
 export interface GeoResult {
   lat: number
   lng: number
@@ -11,9 +13,14 @@ export function requestLocation(): Promise<GeoResult> {
       return
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const { latitude: lat, longitude: lng } = pos.coords
-        const label = `${lat.toFixed(4)}, ${lng.toFixed(4)}`
+        let label = 'Pinned location'
+        try {
+          label = await reverseGeocodeLabel(lat, lng)
+        } catch {
+          /* keep fallback — never show raw coordinates in UI */
+        }
         resolve({ lat, lng, label })
       },
       (err) => {

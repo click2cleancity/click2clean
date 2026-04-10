@@ -1,5 +1,6 @@
 import { gps } from 'exifr'
 import type { GeoResult } from './geo'
+import { reverseGeocodeLabel } from './reverseGeocode'
 
 /** Try to read GPS coordinates embedded in the photo (JPEG/HEIC with location tags). */
 export async function tryGpsFromPhotoFile(file: File): Promise<GeoResult | null> {
@@ -14,11 +15,13 @@ export async function tryGpsFromPhotoFile(file: File): Promise<GeoResult | null>
     ) {
       const lat = out.latitude
       const lng = out.longitude
-      return {
-        lat,
-        lng,
-        label: `From photo (GPS) · ${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+      let label = 'Pinned location'
+      try {
+        label = await reverseGeocodeLabel(lat, lng)
+      } catch {
+        /* fallback */
       }
+      return { lat, lng, label }
     }
   } catch {
     // no EXIF or unsupported format

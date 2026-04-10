@@ -4,6 +4,7 @@ import { motion } from 'motion/react'
 import { MapPin, Sparkles } from 'lucide-react'
 import { communityReports, heroStats, inspirationSlides } from '../data/mock'
 import { mapsUrl } from '../lib/geo'
+import { friendlyAreaLabel } from '../lib/reverseGeocode'
 import 'slick-carousel/slick/slick.css'
 import 'slick-carousel/slick/slick-theme.css'
 
@@ -53,8 +54,13 @@ export default function Home() {
         <div className="space-y-2">
           {communityReports.map((r) => (
             <article key={r.id} className="glass-panel flex gap-3 rounded-2xl p-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-blue-700">
-                <MapPin className="h-5 w-5" aria-hidden />
+              <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-slate-200 ring-1 ring-slate-200/80">
+                <img
+                  src={r.photoUrl}
+                  alt=""
+                  className="h-full w-full object-cover object-center"
+                  loading="lazy"
+                />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-slate-900">{r.title}</p>
@@ -62,9 +68,10 @@ export default function Home() {
                   href={mapsUrl(r.lat, r.lng)}
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-0.5 block truncate text-sm font-medium text-blue-700 underline-offset-2 hover:underline"
+                  className="mt-0.5 inline-flex max-w-full items-center gap-1 truncate text-sm font-medium text-blue-700 underline-offset-2 hover:underline"
                 >
-                  {r.area}
+                  <MapPin className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="truncate">{friendlyAreaLabel(r.area)}</span>
                 </a>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600">
                   <span>{r.time}</span>

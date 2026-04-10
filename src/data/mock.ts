@@ -4,6 +4,7 @@ export const heroStats = [
   { label: 'Cleaner Streets', value: '214' },
 ] as const
 
+/** Demo issue thumbnails (deterministic seeds; replace with CDN in production). */
 export const communityReports = [
   {
     id: 'demo-1',
@@ -13,6 +14,7 @@ export const communityReports = [
     lng: 77.391,
     time: '2h ago',
     status: 'In progress' as const,
+    photoUrl: 'https://picsum.photos/seed/ctc-clean-noida/240/240',
   },
   {
     id: 'demo-2',
@@ -22,6 +24,7 @@ export const communityReports = [
     lng: 77.5946,
     time: '5h ago',
     status: 'Resolved' as const,
+    photoUrl: 'https://picsum.photos/seed/ctc-light-bluru/240/240',
   },
   {
     id: 'demo-3',
@@ -31,8 +34,9 @@ export const communityReports = [
     lng: 88.3639,
     time: '1d ago',
     status: 'Submitted' as const,
+    photoUrl: 'https://picsum.photos/seed/ctc-bin-kolkata/240/240',
   },
-]
+] as const
 
 export const inspirationSlides = [
   {
