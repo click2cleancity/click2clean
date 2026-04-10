@@ -40,6 +40,7 @@ export default function Splash() {
         <p className="mt-3 max-w-xs text-[15px] leading-relaxed text-slate-600">
           Civic reporting for cleaner streets—together.
         </p>
+        <p className="mt-2 max-w-xs text-sm font-medium text-slate-500">Cleaner neighbourhoods, one report at a time.</p>
       </motion.div>
       <motion.p
         className="mt-12 text-xs font-medium text-slate-500"

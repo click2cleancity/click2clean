@@ -28,8 +28,9 @@ export default function Otp() {
   function submit(e: React.FormEvent) {
     e.preventDefault()
     setErr(null)
-    if (otp.replace(/\D/g, '').length !== 6) {
-      setErr('Enter the 6-digit OTP.')
+    const digits = otp.replace(/\D/g, '')
+    if (digits.length < 4) {
+      setErr('Demo: enter any 4 or more digits.')
       return
     }
     if (phone.length !== 10) {
@@ -60,22 +61,22 @@ export default function Otp() {
                 +91 {formatPhone(phone) || '— — — — —'}
               </span>
             </p>
-            <p className="mt-1 text-xs text-slate-500">Demo: enter any 6 digits.</p>
+            <p className="mt-1 text-xs text-slate-500">Demo: any 4+ digits work as OTP.</p>
           </div>
         </div>
 
         <form onSubmit={submit} className="space-y-4">
           <label className="block text-sm font-medium text-slate-700" htmlFor="otp">
-            6-digit OTP
+            OTP (demo)
           </label>
           <input
             id="otp"
             inputMode="numeric"
             autoComplete="one-time-code"
-            maxLength={6}
-            placeholder="••••••"
+            maxLength={8}
+            placeholder="Any 4+ digits"
             value={otp}
-            onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 8))}
             className="w-full rounded-2xl border-0 bg-slate-100/90 px-4 py-3 text-center text-2xl tracking-[0.35em] text-slate-900 outline-none ring-2 ring-transparent focus:ring-blue-500"
           />
           {err ? (

@@ -1,9 +1,9 @@
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import Slider from '../lib/reactSlick'
 import { motion } from 'motion/react'
-import { BookOpen, Flame, Gift, Leaf, ListChecks, Sparkles, Star } from 'lucide-react'
+import { BookOpen, Flame, Gift, Leaf, ListChecks, LogOut, Settings, Sparkles, Star } from 'lucide-react'
 import { badges } from '../data/mock'
-import { getPhone, getPoints, getStoredReports } from '../lib/storage'
+import { getPhone, getPoints, getStoredReports, logout } from '../lib/storage'
 import 'slick-carousel/slick/slick.css'
 import 'slick-carousel/slick/slick-theme.css'
 
@@ -15,10 +15,23 @@ const iconMap = {
 } as const
 
 export default function Profile() {
+  const nav = useNavigate()
   const reports = getStoredReports().length
   const resolved = Math.min(reports, 12)
   const points = getPoints()
   const phone = getPhone()
+
+  function handleLogout() {
+    if (
+      !window.confirm(
+        'Log out? You will see the intro again. Sign in with the same number to load your saved reports and points.'
+      )
+    ) {
+      return
+    }
+    logout()
+    nav('/splash', { replace: true })
+  }
 
   return (
     <div className="space-y-5">
@@ -87,6 +100,27 @@ export default function Profile() {
               <p className="text-sm text-slate-600">Civic awareness reads</p>
             </div>
           </Link>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">Settings</h2>
+        <div className="glass-panel flex items-center gap-3 rounded-2xl p-4 ring-1 ring-slate-200/80">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+            <Settings className="h-6 w-6" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-slate-900">Account</p>
+            <p className="text-sm text-slate-600">Log out to start fresh; same number brings your data back.</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="flex shrink-0 items-center gap-1.5 rounded-full bg-slate-800 px-4 py-2.5 text-sm font-semibold text-white shadow-md active:scale-[0.98]"
+          >
+            <LogOut className="h-4 w-4" aria-hidden />
+            Log out
+          </button>
         </div>
       </section>
 
