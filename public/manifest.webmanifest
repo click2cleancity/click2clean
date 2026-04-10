@@ -1,0 +1,17 @@
+{
+  "name": "Click to Clean",
+  "short_name": "Click to Clean",
+  "description": "Report civic issues and help build cleaner streets.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#e0f2fe",
+  "theme_color": "#2563eb",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
