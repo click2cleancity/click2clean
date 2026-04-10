@@ -37,6 +37,10 @@ jobs:
           VITE_BASE: /${{ github.event.repository.name }}/
         run: npm run build
 
+      # GitHub Pages returns 404 for unknown paths; copy index.html so client routes load the SPA.
+      - name: SPA fallback (404.html)
+        run: cp dist/index.html dist/404.html
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:

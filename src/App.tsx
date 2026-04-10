@@ -26,10 +26,17 @@ function PageLoader() {
   )
 }
 
+/** GitHub Pages serves the app under /repo-name/ — must match vite `base` (import.meta.env.BASE_URL). */
+function routerBasename(): string | undefined {
+  const base = import.meta.env.BASE_URL
+  if (base === '/') return undefined
+  return base.endsWith('/') ? base.slice(0, -1) : base
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
-      <BrowserRouter>
+      <BrowserRouter basename={routerBasename()}>
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/splash" element={<Splash />} />
