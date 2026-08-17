@@ -1,10 +1,30 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'motion/react'
 import { challenges, redeemOptions } from '../data/mock'
-import { getPoints } from '../lib/storage'
+import { supabase } from '../supabase'
+import { getPhone } from '../lib/storage'
 
 export default function Earn() {
-  const points = getPoints()
+  const [points, setPoints] = useState(0)
+
+  useEffect(() => {
+    async function loadPoints() {
+      const { data: user } = await supabase
+        .from('users')
+        .select('id')
+        .eq('phone', `+91${getPhone()}`)
+        .maybeSingle()
+      if (!user) return
+      const { count } = await supabase
+        .from('reports')
+        .select('id', { count: 'exact', head: true })
+        .eq('citizen_id', user.id)
+      setPoints((count ?? 0) * 10)
+    }
+    loadPoints()
+  }, [])
+
   const nextTier = 500
   const progress = Math.min(1, points / nextTier)
 

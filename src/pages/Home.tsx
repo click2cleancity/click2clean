@@ -157,7 +157,12 @@ export default function Home() {
         .maybeSingle()
 
       if (user) {
-        setPoints(user.points ?? 0)
+        // Points = 10 per submitted report (reports are the readable source of truth)
+        const { count } = await supabase
+          .from('reports')
+          .select('id', { count: 'exact', head: true })
+          .eq('citizen_id', user.id)
+        setPoints((count ?? 0) * 10)
 
         // Get my reports
         const { data: mine } = await supabase
@@ -338,7 +343,8 @@ export default function Home() {
             </div>
           ) : (
             myReports.map(r => (
-              <article key={r.id} className="glass-panel flex gap-3 rounded-2xl p-3">
+              <Link key={r.id} to={`/map?report=${r.id}`}
+                className="glass-panel flex items-center gap-3 rounded-2xl p-3 transition active:scale-[0.99]">
                 <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-slate-200">
                   {r.photo_url ? (
                     <img src={r.photo_url} alt=""
@@ -350,23 +356,25 @@ export default function Home() {
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${CAT_BADGE[r.category]}`}>
-                    {CAT_EMOJI[r.category]} {r.category}
-                  </span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${CAT_BADGE[r.category]}`}>
+                      {CAT_EMOJI[r.category]} {r.category}
+                    </span>
+                    <span className="shrink-0 text-xs text-slate-500">{formatReportWhen(r.created_at)}</span>
+                  </div>
                   <p className="mt-1 flex items-center gap-1 text-sm text-slate-600 truncate">
                     <MapPin size={12} className="shrink-0 text-blue-500" />
                     <span className="truncate">{r.address || r.sector}</span>
                   </p>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
-                    <span>{formatReportWhen(r.created_at)}</span>
-                    <span className={`rounded-full px-2 py-0.5 font-semibold ${
+                  <div className="mt-1">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
                       r.status === 'resolved'
                         ? 'bg-emerald-100 text-emerald-800'
                         : 'bg-slate-200 text-slate-800'
                     }`}>{r.status}</span>
                   </div>
                 </div>
-              </article>
+              </Link>
             ))
           )}
         </div>

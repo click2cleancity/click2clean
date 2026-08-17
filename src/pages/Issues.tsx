@@ -1,67 +1,77 @@
-import { useEffect, useRef, useState } from 'react'
-import { useLocation } from 'react-router-dom'
-import { Camera, MapPin } from 'lucide-react'
-import { mapsUrl } from '../lib/geo'
-import { friendlyAreaLabel } from '../lib/reverseGeocode'
+import { useEffect, useState } from 'react'
+import { MapPin } from 'lucide-react'
+import { supabase } from '../supabase'
+import { getPhone } from '../lib/storage'
 import { formatReportWhen } from '../lib/time'
-import { getStoredReports } from '../lib/storage'
 
-type IssueRow = {
+interface Report {
   id: string
-  title: string
-  area: string
+  citizen_id: string
+  category: string
+  description?: string
+  photo_url?: string
   lat: number
   lng: number
-  time: string
-  status: 'Submitted' | 'In progress' | 'Resolved'
-  mine: boolean
-  photoUrl?: string
+  address: string
+  sector: string
+  status: string
+  support_count: number
+  created_at: string
+}
+
+const CAT_EMOJI: Record<string, string> = {
+  garbage: '🗑️', pothole: '🕳️', streetlight: '💡',
+  drain: '🌊', water: '💧', other: '📌',
+}
+const CAT_BADGE: Record<string, string> = {
+  garbage: 'bg-red-100 text-red-700',
+  pothole: 'bg-orange-100 text-orange-700',
+  streetlight: 'bg-yellow-100 text-yellow-700',
+  drain: 'bg-blue-100 text-blue-700',
+  water: 'bg-cyan-100 text-cyan-700',
+  other: 'bg-slate-100 text-slate-700',
 }
 
 export default function Issues() {
-  const { state } = useLocation() as { state?: { highlightId?: string } }
-  const highlightId = state?.highlightId
-  const highlightRef = useRef<HTMLLIElement | null>(null)
   const [tab, setTab] = useState<'all' | 'mine'>('all')
-
-  const merged: IssueRow[] = [...getStoredReports()]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .map((r) => ({
-      id: r.id,
-      title: r.title,
-      area: r.areaLabel,
-      lat: r.lat,
-      lng: r.lng,
-      time: formatReportWhen(r.createdAt),
-      status: r.status,
-      mine: true,
-      photoUrl: r.photoDataUrl,
-    }))
+  const [reports, setReports] = useState<Report[]>([])
+  const [myId, setMyId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (highlightId && highlightRef.current) {
-      highlightRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-  }, [highlightId])
+    async function load() {
+      setLoading(true)
+      const fullPhone = `+91${getPhone()}`
+      const { data: user } = await supabase
+        .from('users')
+        .select('id')
+        .eq('phone', fullPhone)
+        .maybeSingle()
+      setMyId(user?.id ?? null)
 
-  const filtered = tab === 'mine' ? merged.filter((r) => r.mine) : merged
+      const { data } = await supabase
+        .from('reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+      setReports(data ?? [])
+      setLoading(false)
+    }
+    load()
+  }, [])
+
+  const filtered = tab === 'mine' ? reports.filter(r => r.citizen_id === myId) : reports
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 gap-y-3">
-        <div className="min-w-0 flex-1 basis-[55%] sm:basis-auto">
+      <div className="flex items-center justify-between gap-2">
+        <div>
           <h1 className="text-xl font-bold leading-tight text-slate-900 sm:text-2xl">Issues</h1>
-          <p className="mt-0.5 line-clamp-1 text-[11px] text-slate-600 sm:text-xs">
-            Your submissions only — map &amp; status per report.
+          <p className="mt-0.5 text-[11px] text-slate-600 sm:text-xs">
+            Reported cleanliness issues across the city.
           </p>
         </div>
-        <div className="flex shrink-0 gap-2" role="tablist" aria-label="Issue filter">
-          {(
-            [
-              { id: 'all' as const, label: 'All' },
-              { id: 'mine' as const, label: 'Mine' },
-            ] as const
-          ).map(({ id, label }) => {
+        <div className="flex shrink-0 rounded-full bg-white/90 p-1 ring-1 ring-slate-200/90" role="tablist" aria-label="Issue filter">
+          {([{ id: 'all', label: 'All' }, { id: 'mine', label: 'Mine' }] as const).map(({ id, label }) => {
             const selected = tab === id
             return (
               <button
@@ -71,10 +81,8 @@ export default function Issues() {
                 aria-selected={selected}
                 onClick={() => setTab(id)}
                 className={[
-                  'flex h-11 w-11 items-center justify-center rounded-full text-[11px] font-bold shadow-sm transition sm:h-12 sm:w-12 sm:text-xs',
-                  selected
-                    ? 'bg-blue-600 text-white ring-2 ring-blue-400/60 ring-offset-2 ring-offset-slate-50'
-                    : 'bg-white/90 text-slate-700 ring-1 ring-slate-200/90 hover:bg-slate-50',
+                  'rounded-full px-4 py-1.5 text-sm font-bold transition',
+                  selected ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600',
                 ].join(' ')}
               >
                 {label}
@@ -85,68 +93,45 @@ export default function Issues() {
       </div>
 
       <ul className="space-y-2 pt-1">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <li className="glass-panel rounded-2xl p-6 text-center text-sm text-slate-500">Loading issues…</li>
+        ) : filtered.length === 0 ? (
           <li className="glass-panel rounded-2xl p-6 text-center text-sm text-slate-600">
-            No reports yet. Submit one from the home screen.
+            {tab === 'mine' ? 'You haven’t reported anything yet.' : 'No reports yet.'}
           </li>
         ) : (
           filtered.map((r) => (
-            <li
-              key={r.id}
-              ref={highlightId === r.id ? highlightRef : undefined}
-              className={[
-                'glass-panel rounded-2xl p-3 transition-shadow',
-                highlightId === r.id ? 'ring-2 ring-blue-500 ring-offset-2' : '',
-              ].join(' ')}
-            >
-              <div className="flex gap-3">
-                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-slate-200 ring-1 ring-slate-200/80">
-                  {r.photoUrl ? (
-                    <img
-                      src={r.photoUrl}
-                      alt=""
-                      className="h-full w-full object-cover object-center"
-                      loading="lazy"
-                    />
+            <li key={r.id} className="glass-panel rounded-2xl p-3">
+              <div className="flex items-center gap-3">
+                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-slate-200">
+                  {r.photo_url ? (
+                    <img src={r.photo_url} alt="" className="h-full w-full object-cover" loading="lazy" />
                   ) : (
-                    <span className="flex h-full w-full flex-col items-center justify-center gap-0.5 px-1 text-center text-[10px] font-medium leading-tight text-slate-500">
-                      <Camera className="h-6 w-6 text-slate-400" aria-hidden />
-                      No photo saved
-                    </span>
+                    <div className="flex h-full w-full items-center justify-center text-2xl">
+                      {CAT_EMOJI[r.category] ?? '📌'}
+                    </div>
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="font-bold text-slate-900">{r.title}</p>
-                    {r.mine ? (
-                      <span className="shrink-0 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">
-                        Yours
-                      </span>
-                    ) : null}
-                  </div>
-                  <a
-                    href={mapsUrl(r.lat, r.lng)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 inline-flex max-w-full items-center gap-1 text-sm font-semibold text-blue-700"
-                  >
-                    <MapPin className="h-4 w-4 shrink-0" aria-hidden />
-                    <span className="truncate">{friendlyAreaLabel(r.area)}</span>
-                  </a>
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                    <span>{r.time}</span>
-                    <span
-                      className={[
-                        'rounded-full px-2 py-0.5 font-semibold',
-                        r.status === 'Resolved'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : r.status === 'In progress'
-                            ? 'bg-amber-100 text-amber-900'
-                            : 'bg-slate-200 text-slate-800',
-                      ].join(' ')}
-                    >
-                      {r.status}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${CAT_BADGE[r.category] ?? 'bg-slate-100 text-slate-700'}`}>
+                      {CAT_EMOJI[r.category] ?? '📌'} {r.category}
                     </span>
+                    <span className="shrink-0 text-xs text-slate-500">{formatReportWhen(r.created_at)}</span>
+                  </div>
+                  <p className="mt-1 flex items-center gap-1 text-sm text-slate-600">
+                    <MapPin size={12} className="shrink-0 text-blue-500" />
+                    <span className="truncate">{r.address || r.sector}</span>
+                  </p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      r.status === 'resolved' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-700'
+                    }`}>
+                      {r.status === 'resolved' ? '✅ Resolved' : '⏳ Pending'}
+                    </span>
+                    {r.citizen_id === myId && (
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-bold text-blue-800">Yours</span>
+                    )}
                   </div>
                 </div>
               </div>

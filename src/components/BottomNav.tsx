@@ -26,7 +26,7 @@ export function BottomNav() {
         <NavItem to="/" end icon={Home} label="Home" />
         <NavItem to="/issues" icon={Ticket} label="Issues" />
 
-        <div className="flex w-14 shrink-0 flex-col items-center justify-end pb-0.5">
+        <div className="flex min-h-[52px] w-14 shrink-0 flex-col items-center justify-end gap-0.5 py-1">
           <NavLink
             to="/report"
             className="absolute -top-8 left-1/2 flex h-14 w-14 -translate-x-1/2 items-center justify-center rounded-full bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-xl ring-4 ring-white/90"
@@ -42,6 +42,7 @@ export function BottomNav() {
             <Camera className="relative h-7 w-7" aria-hidden />
           </NavLink>
           <span className="text-[10px] font-semibold leading-none text-slate-500">Report</span>
+          <span className="h-0.5 w-6" aria-hidden />
         </div>
 
         <NavItem to="/greetings" icon={MessageCircle} label="Greetings" />

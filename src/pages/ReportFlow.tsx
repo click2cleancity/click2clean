@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
-import { ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, Phone, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, RefreshCw } from 'lucide-react'
 import { supabase } from '../supabase'
 import { getInspector } from '../lib/inspectors'
 import { getPhone } from '../lib/storage'
@@ -180,7 +180,7 @@ export default function ReportFlow() {
       // 3. Find or create user in Supabase
       let { data: user } = await supabase
         .from('users')
-        .select('id')
+        .select('id, points')
         .eq('phone', fullPhone)
         .maybeSingle()
 
@@ -189,7 +189,7 @@ export default function ReportFlow() {
         const { data: newUser, error: userError } = await supabase
           .from('users')
           .insert({ phone: fullPhone, language: 'en' })
-          .select('id')
+          .select('id, points')
           .single()
         if (userError) throw userError
         user = newUser
@@ -223,7 +223,8 @@ export default function ReportFlow() {
 
       if (reportError) throw reportError
 
-      // 6. Add reward points
+      // 6. Add reward points (best-effort log; points are computed from
+      //    report count on Home/Earn, so this is not required for the balance)
       await supabase
         .from('rewards')
         .insert({
@@ -409,10 +410,6 @@ export default function ReportFlow() {
                         <p className="font-semibold text-slate-800">{si.name}</p>
                         <p className="text-xs text-slate-500">{si.designation} · {si.ward}</p>
                       </div>
-                      <a href={`tel:${si.phone}`} aria-label={`Call ${si.name}`}
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
-                        <Phone size={16} />
-                      </a>
                     </div>
                   </div>
                 </div>
