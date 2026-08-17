@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
-import { ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, Phone, RefreshCw } from 'lucide-react'
 import { supabase } from '../supabase'
+import { getInspector } from '../lib/inspectors'
 import { getPhone } from '../lib/storage'
 import { compressDataUrlToJpeg } from '../lib/imageCompress'
 import { reverseGeocodeLabel } from '../lib/reverseGeocode'
@@ -374,6 +375,50 @@ export default function ReportFlow() {
               <p className="mt-1 text-slate-500">Your report is now live on the public map.</p>
               <p className="mt-2 text-sm font-semibold text-blue-600">+10 points earned 🎉</p>
             </div>
+
+            {/* Report details + assigned Sanitary Inspector */}
+            {geo && (() => {
+              const cat = CATEGORIES.find(c => c.id === category)
+              const si = getInspector(geo.sector)
+              const initials = si.name.split(' ').map(n => n[0]).join('').slice(0, 2)
+              return (
+                <div className="w-full max-w-sm space-y-3 text-left">
+                  <div className="rounded-2xl bg-white p-4 shadow-sm">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Report details</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl">{cat?.emoji}</span>
+                      <span className="font-semibold text-slate-800">{cat?.label}</span>
+                      <span className="ml-auto rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-700">⏳ Pending</span>
+                    </div>
+                    <div className="mt-2 flex items-start gap-2">
+                      <MapPin size={14} className="mt-0.5 shrink-0 text-blue-500" />
+                      <p className="text-sm text-slate-600">{geo.address}</p>
+                    </div>
+                    {description.trim() && (
+                      <p className="mt-2 text-sm text-slate-500">"{description.trim()}"</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl bg-blue-50 p-4">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-500">Assigned Sanitary Inspector</p>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                        {initials}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-slate-800">{si.name}</p>
+                        <p className="text-xs text-slate-500">{si.designation} · {si.ward}</p>
+                      </div>
+                      <a href={`tel:${si.phone}`} aria-label={`Call ${si.name}`}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
+                        <Phone size={16} />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
             <div className="flex gap-3 w-full max-w-xs">
               <button onClick={() => { setStep('photo'); setPhotoFile(null); setPhotoPreview(null); setGeo(null); setDescription(''); setErr(null) }}
                 className="flex-1 rounded-full border border-slate-300 bg-white py-3 text-sm font-semibold">Report Another</button>
