@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet.heat'
 import { supabase } from '../supabase'
 import { ArrowLeft, Filter, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
@@ -33,16 +34,25 @@ const CAT_CONFIG: Record<Category, { emoji: string; label: string; color: string
   other:       { emoji: '📌', label: 'Other',       color: '#6b7280' },
 }
 
+// Heatmap color ramp: low density → yellow, high density → deep indigo
+const HEAT_GRADIENT: Record<number, string> = {
+  0.0: '#fde047',
+  0.3: '#fb923c',
+  0.5: '#ef4444',
+  0.7: '#c026d3',
+  1.0: '#312e81',
+}
+
 // ── Create colored circle marker ───────────────────
 function makeMarker(report: Report): L.CircleMarker {
   const cfg = CAT_CONFIG[report.category] ?? CAT_CONFIG.other
   return L.circleMarker([report.lat, report.lng], {
-    radius: 10,
+    radius: 6,
     fillColor: report.status === 'resolved' ? '#22c55e' : cfg.color,
     color: '#ffffff',
-    weight: 2,
+    weight: 1.5,
     opacity: 1,
-    fillOpacity: 0.9,
+    fillOpacity: 1,
   })
 }
 
@@ -82,6 +92,7 @@ export default function PublicMap() {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<L.Map | null>(null)
   const markersRef = useRef<Map<string, L.CircleMarker>>(new Map())
+  const heatRef = useRef<L.HeatLayer | null>(null)
 
   const [reports, setReports] = useState<Report[]>([])
   const [loading, setLoading] = useState(true)
@@ -131,8 +142,9 @@ export default function PublicMap() {
     mapInstance.current = L.map(mapRef.current, {
       center: [19.033, 73.029], // Navi Mumbai
       zoom: 12,
-      zoomControl: true,
+      zoomControl: false,
     })
+    L.control.zoom({ position: 'bottomleft' }).addTo(mapInstance.current)
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -153,12 +165,26 @@ export default function PublicMap() {
     markersRef.current.forEach(m => m.remove())
     markersRef.current.clear()
 
+    // Remove old heat layer
+    if (heatRef.current) {
+      heatRef.current.remove()
+      heatRef.current = null
+    }
+
     // Filter reports
     const filtered = reports.filter(r => {
       if (filter !== 'all' && r.category !== filter) return false
       if (statusFilter !== 'all' && r.status !== statusFilter) return false
       return true
     })
+
+    // Heatmap density layer (under the markers)
+    if (filtered.length > 0) {
+      heatRef.current = L.heatLayer(
+        filtered.map(r => [r.lat, r.lng, 0.8]),
+        { radius: 30, blur: 22, maxZoom: 17, minOpacity: 0.35, gradient: HEAT_GRADIENT }
+      ).addTo(map)
+    }
 
     // Add new markers
     filtered.forEach(report => {
@@ -194,7 +220,7 @@ export default function PublicMap() {
         </Link>
         <div className="flex-1 rounded-full bg-white shadow-md px-4 py-2">
           <p className="text-sm font-semibold text-slate-800">
-            🗺️ Public Map
+            Public Map
             {loading ? (
               <span className="ml-2 text-xs font-normal text-slate-400">Loading...</span>
             ) : (

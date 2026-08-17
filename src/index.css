@@ -74,3 +74,13 @@ body {
 .inspiration-slider .slick-dots li.slick-active button:before {
   opacity: 0.95;
 }
+
+/* Blinking eye icon in the Report hero */
+@keyframes blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.08); }
+}
+.animate-blink {
+  animation: blink 3.5s ease-in-out infinite;
+  transform-origin: center;
+}

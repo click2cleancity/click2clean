@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Slider from '../lib/reactSlick'
 import { motion } from 'motion/react'
-import { BookOpen, ChevronRight, MapPin, Sparkles } from 'lucide-react'
+import { BookOpen, Camera, ChevronRight, Eye, MapPin, ShieldCheck } from 'lucide-react'
 import { inspirationSlides } from '../data/mock'
 import { formatReportWhen } from '../lib/time'
 import { getPhone } from '../lib/storage'
 import { supabase } from '../supabase'
 import * as L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import 'leaflet.heat'
 import 'slick-carousel/slick/slick.css'
 import 'slick-carousel/slick/slick-theme.css'
 
@@ -20,10 +21,13 @@ const CAT_EMOJI: Record<string, string> = {
   drain: '🌊', water: '💧', other: '📌',
 }
 
-const CAT_COLOR: Record<string, string> = {
-  garbage: '#ef4444', pothole: '#f97316',
-  streetlight: '#eab308', drain: '#3b82f6',
-  water: '#06b6d4', other: '#6b7280',
+// Heatmap color ramp: low density → yellow, high density → deep indigo
+const HEAT_GRADIENT: Record<number, string> = {
+  0.0: '#fde047',
+  0.3: '#fb923c',
+  0.5: '#ef4444',
+  0.7: '#c026d3',
+  1.0: '#312e81',
 }
 
 const CAT_BADGE: Record<string, string> = {
@@ -62,15 +66,17 @@ function MiniMap({ reports }: { reports: Report[] }) {
     }
 
     const map = L.map(mapRef.current, {
-      dragging: false,
+      dragging: true,
       scrollWheelZoom: false,
       boxZoom: false,
       keyboard: false,
-      doubleClickZoom: false,
-      touchZoom: false,
+      doubleClickZoom: true,
+      touchZoom: true,
       zoomControl: false,
       attributionControl: false,
     })
+
+    L.control.zoom({ position: 'bottomleft' }).addTo(map)
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -82,15 +88,21 @@ function MiniMap({ reports }: { reports: Report[] }) {
       // Default to Navi Mumbai
       map.setView([19.033, 73.029], 12)
     } else {
-      // Plot heatmap-style dots
+      // Heatmap layer
+      L.heatLayer(
+        valid.map(r => [r.lat, r.lng, 0.8]),
+        { radius: 25, blur: 18, maxZoom: 17, minOpacity: 0.35, gradient: HEAT_GRADIENT }
+      ).addTo(map)
+
+      // White dots at each report location
       valid.forEach(r => {
         L.circleMarker([r.lat, r.lng], {
-          radius: 14,
-          fillColor: CAT_COLOR[r.category] ?? '#6b7280',
-          color: '#ffffff',
-          weight: 2,
+          radius: 3.5,
+          fillColor: '#ffffff',
+          color: '#312e81',
+          weight: 1,
           opacity: 0.9,
-          fillOpacity: 0.75,
+          fillOpacity: 1,
         }).addTo(map)
       })
 
@@ -177,23 +189,68 @@ export default function Home() {
   return (
     <motion.div initial="hidden" animate="visible" variants={stagger} className="space-y-5">
 
-      {/* Report CTA */}
-      <motion.section variants={item} className="glass-panel overflow-hidden rounded-[28px] p-5">
-        <div className="rounded-3xl bg-gradient-to-br from-blue-500 via-blue-600 to-blue-800 p-5 text-white shadow-lg">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-blue-100">Ready when you are</p>
-              <h2 className="mt-1 text-2xl font-bold leading-tight">Report Issue Now</h2>
-              <p className="mt-2 max-w-[18rem] text-sm text-blue-100">
-                One clear photo and location helps your city respond faster.
-              </p>
-            </div>
-            <Sparkles className="h-10 w-10 shrink-0 text-lime-300" aria-hidden />
-          </div>
-          <Link to="/report"
-            className="mt-5 inline-flex w-full items-center justify-center rounded-full bg-white py-3 text-center text-base font-semibold text-blue-700 shadow-md">
-            Start reporting
+      {/* Report CTA — hero */}
+      <motion.section
+        variants={item}
+        className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-500 via-blue-600 to-blue-800 px-5 py-5 text-white shadow-xl"
+      >
+        {/* Background illustration */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 bg-cover bg-right bg-no-repeat opacity-90"
+          style={{ backgroundImage: `url(${import.meta.env.BASE_URL}report-hero.png)` }}
+        />
+
+        {/* Blinking eye */}
+        <Eye
+          className="animate-blink pointer-events-none absolute right-6 top-14 z-10 h-16 w-16 text-white/90"
+          strokeWidth={1.5}
+          aria-hidden
+        />
+
+        {/* Content */}
+        <div className="relative z-10">
+          <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-lime-300">
+            Your city needs your eyes
+          </p>
+
+          <h2 className="mt-2 text-[26px] font-extrabold leading-[1.08]">
+            See it. Snap it.
+            <br />
+            <span className="relative inline-block text-lime-300">
+              Report it.
+              <svg
+                viewBox="0 0 120 12"
+                className="absolute -bottom-1 left-0 w-[92%]"
+                fill="none"
+                aria-hidden="true"
+              >
+                <path
+                  d="M2 8c22-6 60-7 116-3"
+                  stroke="#bef264"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </span>
+          </h2>
+
+          <p className="mt-3 max-w-[15rem] text-[13px] leading-tight text-blue-100">
+            Your photo helps the city identify and track cleanliness issues.
+          </p>
+
+          <Link
+            to="/report"
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-white py-3 text-[15px] font-bold text-blue-700 shadow-lg transition-transform active:scale-[0.98]"
+          >
+            <Camera className="h-5 w-5" aria-hidden />
+            Report an issue
           </Link>
+
+          <p className="mt-3 flex items-center justify-center gap-1.5 text-center text-[11px] font-medium text-blue-100">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-lime-300" aria-hidden />
+            Every report helps make your neighbourhood cleaner.
+          </p>
         </div>
       </motion.section>
 
@@ -216,42 +273,40 @@ export default function Home() {
       {/* Public Map Widget — Square 1:1 */}
       <motion.section variants={item}>
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-lg font-bold text-slate-900">🗺️ Public Map</h3>
+          <h3 className="text-lg font-bold text-slate-900">Public Map</h3>
           <Link to="/map" className="text-sm font-semibold text-blue-700">
             View full map
           </Link>
         </div>
-        <Link to="/map" className="block">
-          <div className="glass-panel rounded-2xl overflow-hidden relative aspect-square">
+        <div className="glass-panel rounded-2xl overflow-hidden relative aspect-square">
 
-            {/* Real Leaflet Mini Map */}
-            <MiniMap reports={allReports} />
+          {/* Real Leaflet Mini Map (interactive: pan + zoom) */}
+          <MiniMap reports={allReports} />
 
-            {/* Top left — total count */}
-            <div className="absolute top-3 left-3 z-[500] rounded-2xl bg-white/95 shadow-lg px-3 py-2">
-              <p className="text-[10px] text-slate-500 font-medium">Total Reports</p>
-              <p className="text-3xl font-bold text-slate-900 leading-none mt-0.5">
-                {loading ? '...' : allReports.length}
-              </p>
-            </div>
-
-            {/* Top right — pending count */}
-            <div className="absolute top-3 right-3 z-[500] rounded-2xl bg-orange-500/90 shadow-lg px-3 py-2">
-              <p className="text-[10px] text-orange-100 font-medium">Pending</p>
-              <p className="text-2xl font-bold text-white leading-none mt-0.5">
-                {loading ? '...' : pendingCount}
-              </p>
-            </div>
-
-            {/* Bottom — tap hint */}
-            <div className="absolute bottom-3 left-0 right-0 flex justify-center z-[500]">
-              <span className="rounded-full bg-white/95 shadow-md px-4 py-1.5 text-xs font-semibold text-blue-700">
-                🔍 Tap to explore full map
-              </span>
-            </div>
-
+          {/* Top left — total count */}
+          <div className="absolute top-3 left-3 z-[500] rounded-2xl bg-white/95 shadow-lg px-3 py-2 pointer-events-none">
+            <p className="text-[10px] text-slate-500 font-medium">Total Reports</p>
+            <p className="text-3xl font-bold text-slate-900 leading-none mt-0.5">
+              {loading ? '...' : allReports.length}
+            </p>
           </div>
-        </Link>
+
+          {/* Top right — pending count */}
+          <div className="absolute top-3 right-3 z-[500] rounded-2xl bg-orange-500/90 shadow-lg px-3 py-2 pointer-events-none">
+            <p className="text-[10px] text-orange-100 font-medium">Pending</p>
+            <p className="text-2xl font-bold text-white leading-none mt-0.5">
+              {loading ? '...' : pendingCount}
+            </p>
+          </div>
+
+          {/* Bottom — explore full map */}
+          <div className="absolute bottom-3 left-0 right-0 flex justify-center z-[500]">
+            <Link to="/map" className="rounded-full bg-white/95 shadow-md px-4 py-1.5 text-xs font-semibold text-blue-700">
+              🔍 Explore full map
+            </Link>
+          </div>
+
+        </div>
       </motion.section>
 
       {/* My Reports */}
