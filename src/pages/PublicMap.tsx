@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import L from '../lib/leaflet'
 import '../lib/leafletHeat'
 import { supabase } from '../supabase'
-import { ArrowLeft, Filter, Phone, X } from 'lucide-react'
-import { getInspector } from '../lib/inspectors'
+import { ArrowLeft, Filter, X } from 'lucide-react'
+import AccountabilityCard from '../components/AccountabilityCard'
 import { Link, useSearchParams } from 'react-router-dom'
 
 // ── Types ──────────────────────────────────────────
@@ -323,29 +323,10 @@ export default function PublicMap() {
             <span className="text-xs text-slate-500">👀 {selectedReport.support_count} see this</span>
           </div>
 
-          {/* Assigned Sanitary Inspector */}
-          {(() => {
-            const si = getInspector(selectedReport.sector || selectedReport.address)
-            const initials = si.name.split(' ').map(n => n[0]).join('').slice(0, 2)
-            return (
-              <div className="mt-3 rounded-2xl bg-blue-50 p-3">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-blue-500">Assigned Sanitary Inspector</p>
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
-                    {initials}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-slate-800">{si.name}</p>
-                    <p className="text-xs text-slate-500">{si.designation} · {si.ward}</p>
-                  </div>
-                  <a href={`tel:${si.phone}`} aria-label={`Call ${si.name}`}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white">
-                    <Phone size={16} />
-                  </a>
-                </div>
-              </div>
-            )
-          })()}
+          {/* Accountability — responsible SI + escalation for this location */}
+          <div className="mt-3">
+            <AccountabilityCard sector={selectedReport.sector} address={selectedReport.address} />
+          </div>
         </div>
       )}
 

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import { ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, RefreshCw } from 'lucide-react'
 import { supabase } from '../supabase'
-import { getInspector } from '../lib/inspectors'
+import AccountabilityCard from '../components/AccountabilityCard'
 import { getPhone } from '../lib/storage'
 import { compressDataUrlToJpeg } from '../lib/imageCompress'
 import { reverseGeocodeLabel } from '../lib/reverseGeocode'
@@ -377,11 +377,9 @@ export default function ReportFlow() {
               <p className="mt-2 text-sm font-semibold text-blue-600">+10 points earned 🎉</p>
             </div>
 
-            {/* Report details + assigned Sanitary Inspector */}
+            {/* Report details + accountability */}
             {geo && (() => {
               const cat = CATEGORIES.find(c => c.id === category)
-              const si = getInspector(geo.sector)
-              const initials = si.name.split(' ').map(n => n[0]).join('').slice(0, 2)
               return (
                 <div className="w-full max-w-sm space-y-3 text-left">
                   <div className="rounded-2xl bg-white p-4 shadow-sm">
@@ -400,18 +398,7 @@ export default function ReportFlow() {
                     )}
                   </div>
 
-                  <div className="rounded-2xl bg-blue-50 p-4">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-500">Assigned Sanitary Inspector</p>
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
-                        {initials}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-semibold text-slate-800">{si.name}</p>
-                        <p className="text-xs text-slate-500">{si.designation} · {si.ward}</p>
-                      </div>
-                    </div>
-                  </div>
+                  <AccountabilityCard sector={geo.sector} address={geo.address} />
                 </div>
               )
             })()}
