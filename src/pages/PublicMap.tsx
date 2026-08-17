@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css'
 import 'leaflet.heat'
 import { supabase } from '../supabase'
 import { ArrowLeft, Filter, X } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 // ── Types ──────────────────────────────────────────
 type Category = 'garbage' | 'pothole' | 'streetlight' | 'drain' | 'water' | 'other'
@@ -100,6 +100,7 @@ export default function PublicMap() {
   const [statusFilter, setStatusFilter] = useState<Status | 'all'>('all')
   const [showFilters, setShowFilters] = useState(false)
   const [selectedReport, setSelectedReport] = useState<Report | null>(null)
+  const [searchParams] = useSearchParams()
 
   // ── Load reports from Supabase ─────────────────
   useEffect(() => {
@@ -202,6 +203,17 @@ export default function PublicMap() {
       }
     }
   }, [reports, filter, statusFilter])
+
+  // ── Open a specific report when arriving via ?report=<id> ─
+  useEffect(() => {
+    const id = searchParams.get('report')
+    if (!id || reports.length === 0) return
+    const r = reports.find(x => x.id === id)
+    if (r) {
+      setSelectedReport(r)
+      mapInstance.current?.setView([r.lat, r.lng], 16)
+    }
+  }, [searchParams, reports])
 
   const filteredCount = reports.filter(r => {
     if (filter !== 'all' && r.category !== filter) return false

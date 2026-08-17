@@ -44,8 +44,9 @@ function webManifestPlugin(): Plugin {
 }
 
 // https://vite.dev/config/
-// Set VITE_BASE=/your-repo-name/ when deploying to GitHub Pages (see GITHUB_SETUP.md).
+// Base path is served from the root ('/') by default — correct for Vercel/Netlify.
+// For GitHub Pages project sites, set VITE_BASE=/click2clean/ at build time.
 export default defineConfig({
-  base: '/click2clean/',
+  base: process.env.VITE_BASE || '/',
   plugins: [react(), tailwindcss(), webManifestPlugin()],
 })

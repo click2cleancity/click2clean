@@ -52,8 +52,79 @@ export default function ReportFlow() {
   const [description, setDescription] = useState('')
   const [geo, setGeo] = useState<GeoInfo | null>(null)
   const [geoLoading, setGeoLoading] = useState(false)
+  const [locationExact, setLocationExact] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [submitErr, setSubmitErr] = useState<string | null>(null)
+
+  // Approximate fallback so a report is never blocked when GPS is unavailable.
+  const FALLBACK_GEO = { lat: 19.033, lng: 73.029 } // Navi Mumbai
+
+  function getBrowserPosition(): Promise<GeolocationPosition> {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('Geolocation not supported'))
+        return
+      }
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 30000,
+      })
+    })
+  }
+
+  // Capture location: EXIF from photo first, then ask the browser for GPS
+  // (this triggers the permission prompt), then fall back to approximate.
+  async function captureLocation(file?: File | null) {
+    setGeoLoading(true)
+    setErr(null)
+    try {
+      let lat: number | null = null
+      let lng: number | null = null
+
+      // 1. Try EXIF GPS embedded in the photo
+      if (file) {
+        try {
+          const exif = await tryGpsFromPhotoFile(file)
+          if (exif) { lat = exif.lat; lng = exif.lng }
+        } catch { /* no exif */ }
+      }
+
+      // 2. Ask the browser for GPS (prompts for permission)
+      if (lat == null || lng == null) {
+        const pos = await getBrowserPosition()
+        lat = pos.coords.latitude
+        lng = pos.coords.longitude
+      }
+
+      const address = await reverseGeocodeLabel(lat, lng).catch(() => null)
+      setGeo({
+        lat,
+        lng,
+        address: address ?? 'Pinned location',
+        sector: address ?? 'Unknown Sector',
+      })
+      setLocationExact(true)
+    } catch (error) {
+      console.error('GPS error:', error)
+      // Don't block the report — use an approximate location the user can retry.
+      setGeo({
+        lat: FALLBACK_GEO.lat,
+        lng: FALLBACK_GEO.lng,
+        address: 'Approximate location',
+        sector: 'Approximate',
+      })
+      setLocationExact(false)
+      const insecure = typeof window !== 'undefined' && !window.isSecureContext
+      setErr(
+        insecure
+          ? 'GPS needs a secure (https) connection, so an approximate location is used. Deploy or open over https for precise GPS.'
+          : 'Could not get precise GPS. Using an approximate location — tap “Retry location” to enable it.'
+      )
+    } finally {
+      setGeoLoading(false)
+    }
+  }
 
   async function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -76,44 +147,19 @@ export default function ReportFlow() {
       setPhotoFile(compressed)
       setPhotoPreview(compressedDataUrl)
 
-      // Try EXIF GPS first
-      let lat: number | null = null
-      let lng: number | null = null
-      try {
-        const exif = await tryGpsFromPhotoFile(file)
-        if (exif) { lat = exif.lat; lng = exif.lng }
-      } catch { /* no exif */ }
-
-      // Fall back to browser GPS
-      if (!lat || !lng) {
-        const pos = await new Promise<GeolocationPosition>((res, rej) =>
-          navigator.geolocation.getCurrentPosition(res, rej, {
-            enableHighAccuracy: true, timeout: 10000
-          })
-        )
-        lat = pos.coords.latitude
-        lng = pos.coords.longitude
-      }
-
-      // Reverse geocode
-      const address = await reverseGeocodeLabel(lat, lng)
-      setGeo({
-        lat,
-        lng,
-        address: address ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-        sector: address ?? 'Unknown Sector',
-      })
+      // Capture location using the original file (keeps EXIF)
+      await captureLocation(file)
     } catch (error) {
-      console.error('GPS error:', error)
-      setErr('Could not get location. Please enable GPS and try again.')
-    } finally {
+      console.error('Photo error:', error)
+      setErr('Could not process the photo. Please try again.')
       setGeoLoading(false)
     }
   }
 
   function goToDetails() {
     if (!photoFile) { setErr('Please take a photo first.'); return }
-    if (!geo) { setErr('Location not captured yet. Please wait.'); return }
+    if (geoLoading) { setErr('Getting location… please wait.'); return }
+    if (!geo) { setErr('Location not captured yet. Please retry.'); return }
     setStep('details')
   }
 
@@ -231,16 +277,25 @@ export default function ReportFlow() {
                 )}
               </label>
               <div className="mt-3 flex items-center gap-2 text-sm">
-                <MapPin size={14} className={geo ? 'text-green-500' : 'text-slate-400'} />
+                <MapPin size={14} className={geo ? (locationExact ? 'text-green-500' : 'text-amber-500') : 'text-slate-400'} />
                 {geoLoading ? (
-                  <span className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Getting location...</span>
+                  <span className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Getting location…</span>
                 ) : geo ? (
-                  <span className="text-green-600 font-medium">{geo.address}</span>
+                  <span className={locationExact ? 'text-green-600 font-medium' : 'text-amber-600 font-medium'}>{geo.address}</span>
                 ) : (
-                  <span className="text-slate-400">Location captured with photo</span>
+                  <span className="text-slate-400">Location will be captured with the photo</span>
                 )}
               </div>
-              {err && <p className="mt-2 text-sm text-red-500">{err}</p>}
+              {err && <p className="mt-2 text-sm text-amber-600">{err}</p>}
+              {photoFile && !geoLoading && (
+                <button
+                  type="button"
+                  onClick={() => captureLocation(photoFile)}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700"
+                >
+                  <RefreshCw size={12} /> Retry location
+                </button>
+              )}
             </div>
             <button onClick={goToDetails} disabled={!photoFile || geoLoading} className="w-full rounded-full bg-blue-600 py-3.5 text-base font-semibold text-white shadow disabled:opacity-50">
               Next →
@@ -273,10 +328,19 @@ export default function ReportFlow() {
             </div>
             {geo && (
               <div className="rounded-3xl bg-white p-4 shadow-sm flex items-start gap-3">
-                <MapPin size={18} className="text-blue-500 mt-0.5 shrink-0" />
-                <div>
+                <MapPin size={18} className={`mt-0.5 shrink-0 ${locationExact ? 'text-blue-500' : 'text-amber-500'}`} />
+                <div className="flex-1">
                   <p className="text-sm font-medium text-slate-800">{geo.sector}</p>
                   <p className="text-xs text-slate-400">{geo.address}</p>
+                  {!locationExact && (
+                    <button
+                      type="button"
+                      onClick={() => captureLocation(photoFile)}
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-600"
+                    >
+                      <RefreshCw size={12} /> Approximate — retry precise GPS
+                    </button>
+                  )}
                 </div>
               </div>
             )}

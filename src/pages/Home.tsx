@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import Slider from '../lib/reactSlick'
 import { motion } from 'motion/react'
 import { BookOpen, Camera, ChevronRight, Eye, MapPin, ShieldCheck } from 'lucide-react'
@@ -55,6 +55,7 @@ interface Report {
 
 // ── Mini Map Component ─────────────────────────────
 function MiniMap({ reports }: { reports: Report[] }) {
+  const navigate = useNavigate()
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstance = useRef<L.Map | null>(null)
 
@@ -94,16 +95,17 @@ function MiniMap({ reports }: { reports: Report[] }) {
         { radius: 25, blur: 18, maxZoom: 17, minOpacity: 0.35, gradient: HEAT_GRADIENT }
       ).addTo(map)
 
-      // White dots at each report location
+      // White dots at each report location — tap to open on the full map
       valid.forEach(r => {
-        L.circleMarker([r.lat, r.lng], {
-          radius: 3.5,
+        const dot = L.circleMarker([r.lat, r.lng], {
+          radius: 5,
           fillColor: '#ffffff',
           color: '#312e81',
-          weight: 1,
-          opacity: 0.9,
+          weight: 1.5,
+          opacity: 1,
           fillOpacity: 1,
         }).addTo(map)
+        dot.on('click', () => navigate(`/map?report=${r.id}`))
       })
 
       // Fit to all reports
@@ -126,7 +128,7 @@ function MiniMap({ reports }: { reports: Report[] }) {
       mapInstance.current?.remove()
       mapInstance.current = null
     }
-  }, [reports])
+  }, [reports, navigate])
 
   return (
     <div
