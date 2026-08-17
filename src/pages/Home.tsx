@@ -157,22 +157,16 @@ export default function Home() {
         .maybeSingle()
 
       if (user) {
-        // Points = 10 per submitted report (reports are the readable source of truth)
-        const { count } = await supabase
-          .from('reports')
-          .select('id', { count: 'exact', head: true })
-          .eq('citizen_id', user.id)
-        setPoints((count ?? 0) * 10)
-
-        // Get my reports
+        // Get all my reports — used for stats, points (10 each) and the top-3 list
         const { data: mine } = await supabase
           .from('reports')
           .select('*')
           .eq('citizen_id', user.id)
           .order('created_at', { ascending: false })
-          .limit(5)
 
-        if (mine) setMyReports(mine)
+        const list = mine ?? []
+        setMyReports(list)
+        setPoints(list.length * 10)
       }
 
       // Get all public reports
@@ -319,7 +313,7 @@ export default function Home() {
       <motion.section variants={item}>
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="text-lg font-bold text-slate-900">Your reports</h3>
-          {myReports.length > 0 && (
+          {myReports.length > 3 && (
             <Link to="/issues" className="shrink-0 text-sm font-semibold text-blue-700">
               View all
             </Link>
@@ -342,7 +336,7 @@ export default function Home() {
               </Link>
             </div>
           ) : (
-            myReports.map(r => (
+            myReports.slice(0, 3).map(r => (
               <Link key={r.id} to={`/map?report=${r.id}`}
                 className="glass-panel flex items-center gap-3 rounded-2xl p-3 transition active:scale-[0.99]">
                 <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl bg-slate-200">
