@@ -1,0 +1,1 @@
+import{i as e,l as t,n,r,s as i}from"./storage-Bmj0Z1J8.js";function a(){return i()?n()?r()?t()?`/`:e()?`/otp`:`/phone`:`/onboarding`:`/language`:`/splash`}export{a as t};

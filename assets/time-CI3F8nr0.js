@@ -1,0 +1,1 @@
+function e(e){let t=new Date(e),n=t.getTime();if(Number.isNaN(n))return``;let r=Date.now()-n,i=6e4,a=60*i,o=24*a;return r<i?`Just now`:r<a?`${Math.floor(r/i)}m ago`:r<o?`${Math.floor(r/a)}h ago`:r<7*o?`${Math.floor(r/o)}d ago`:t.toLocaleDateString(void 0,{month:`short`,day:`numeric`,year:`numeric`})}export{e as t};
