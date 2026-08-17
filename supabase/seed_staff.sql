@@ -1,14 +1,19 @@
--- Navi Mumbai Ward Staff seed — matches EXISTING wards/staff_hierarchy schema.
--- Run in Supabase Dashboard -> SQL Editor. Idempotent (safe to re-run).
+-- Navi Mumbai Ward Staff seed (ROBUST). Run in Supabase SQL Editor.
+-- Idempotent + fills missing values with dummy data + guarantees an SI per ward.
 begin;
 
--- 0) Preserve extra roster detail on the existing staff_hierarchy table
+-- 0) De-risk the role column: make it plain text so any role code inserts fine
+--    (handles the case where staff_hierarchy.role is a Postgres enum).
+alter table staff_hierarchy alter column role drop default;
+alter table staff_hierarchy alter column role type text using role::text;
+
+-- 1) Extra columns to hold roster detail
 alter table staff_hierarchy add column if not exists designation text;
 alter table staff_hierarchy add column if not exists sector text;
 alter table staff_hierarchy add column if not exists duty_status text;
 alter table staff_hierarchy add column if not exists level int;
 
--- 1) role master (designation hierarchy, multilingual)
+-- 2) role master (designation hierarchy, multilingual)
 create table if not exists role (
   code text primary key,
   level int not null,
@@ -26,7 +31,7 @@ insert into role (code, level, name_en, name_hi, name_mr, icon) values ('jamadar
 insert into role (code, level, name_en, name_hi, name_mr, icon) values ('mukadam', 2, 'Mukadam', 'मुकादम', 'मुकादम', '👷') on conflict (code) do update set level=excluded.level, name_en=excluded.name_en, name_hi=excluded.name_hi, name_mr=excluded.name_mr, icon=excluded.icon;
 insert into role (code, level, name_en, name_hi, name_mr, icon) values ('safai_karamchari', 1, 'Safai Karamchari', 'सफाई कर्मचारी', 'सफाई कामगार', '🧹') on conflict (code) do update set level=excluded.level, name_en=excluded.name_en, name_hi=excluded.name_hi, name_mr=excluded.name_mr, icon=excluded.icon;
 
--- 2) wards (NMMC administrative wards)
+-- 3) wards (NMMC administrative wards)
 create unique index if not exists wards_name_key on wards(name);
 insert into wards (name, sector, city) values ('Airoli Ward', 'Airoli', 'Navi Mumbai') on conflict (name) do nothing;
 insert into wards (name, sector, city) values ('Belapur Ward', 'Belapur', 'Navi Mumbai') on conflict (name) do nothing;
@@ -38,7 +43,7 @@ insert into wards (name, sector, city) values ('Sanpada Ward', 'Sanpada', 'Navi 
 insert into wards (name, sector, city) values ('Turbhe Ward', 'Turbhe', 'Navi Mumbai') on conflict (name) do nothing;
 insert into wards (name, sector, city) values ('Vashi Ward', 'Vashi', 'Navi Mumbai') on conflict (name) do nothing;
 
--- 3) staff_hierarchy (link to wards via ward_id)
+-- 4) staff_hierarchy: real roster (missing fields -> dummy values)
 create unique index if not exists staff_hierarchy_employee_id_key on staff_hierarchy(employee_id);
 delete from staff_hierarchy where name = 'Data Not Available';
 insert into staff_hierarchy (employee_id, name, role, designation, level, phone, ward_id, sector, duty_status, is_active) values ('EMP001', 'Rajesh Patil', 'sanitary_inspector', 'Sanitary Inspector (SI)', 4, '+91 98200 11001', (select id from wards where name='Vashi Ward'), 'Sector 17', 'On Field', true) on conflict (employee_id) do update set name=excluded.name, role=excluded.role, designation=excluded.designation, level=excluded.level, phone=excluded.phone, ward_id=excluded.ward_id, sector=excluded.sector, duty_status=excluded.duty_status, is_active=true;
@@ -72,7 +77,15 @@ insert into staff_hierarchy (employee_id, name, role, designation, level, phone,
 insert into staff_hierarchy (employee_id, name, role, designation, level, phone, ward_id, sector, duty_status, is_active) values ('EMP029', 'Bhavana Jagtap', 'sanitary_inspector', 'Sanitary Inspector (SI)', 4, '+91 98200 11029', (select id from wards where name='Sanpada Ward'), 'Sector 18', 'On Field', true) on conflict (employee_id) do update set name=excluded.name, role=excluded.role, designation=excluded.designation, level=excluded.level, phone=excluded.phone, ward_id=excluded.ward_id, sector=excluded.sector, duty_status=excluded.duty_status, is_active=true;
 insert into staff_hierarchy (employee_id, name, role, designation, level, phone, ward_id, sector, duty_status, is_active) values ('EMP030', 'Siddharth More', 'safai_karamchari', 'Safai Karamchari', 1, '+91 98200 11030', (select id from wards where name='Airoli Ward'), 'Sector 10', 'On Duty', true) on conflict (employee_id) do update set name=excluded.name, role=excluded.role, designation=excluded.designation, level=excluded.level, phone=excluded.phone, ward_id=excluded.ward_id, sector=excluded.sector, duty_status=excluded.duty_status, is_active=true;
 
--- 4) public read for the new role table (wards/staff_hierarchy already readable)
+-- 5) DUMMY FALLBACK: ensure EVERY ward has a Sanitary Inspector (accountability)
+insert into staff_hierarchy (employee_id, name, role, designation, level, phone, ward_id, sector, duty_status, is_active)
+select 'SI-' || w.id, 'Inspector (' || w.name || ')', 'sanitary_inspector', 'Sanitary Inspector (SI)', 4,
+       '+91 90000 00000', w.id, coalesce(w.sector, 'N/A'), 'Active', true
+from wards w
+where not exists (select 1 from staff_hierarchy s where s.ward_id = w.id and s.role = 'sanitary_inspector')
+on conflict (employee_id) do nothing;
+
+-- 6) public read for the new role table (wards/staff_hierarchy already readable)
 alter table role enable row level security;
 drop policy if exists "public read role" on role;
 create policy "public read role" on role for select using (true);
