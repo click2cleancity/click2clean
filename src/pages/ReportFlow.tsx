@@ -1,402 +1,323 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import Slider from '../lib/reactSlick'
 import { motion, AnimatePresence } from 'motion/react'
 import { ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, RefreshCw } from 'lucide-react'
-import { tips } from '../data/mock'
-import { tryGpsFromPhotoFile } from '../lib/exifGeo'
-import { requestLocation, mapsUrl, type GeoResult } from '../lib/geo'
+import { supabase } from '../supabase'
+import { getPhone } from '../lib/storage'
 import { compressDataUrlToJpeg } from '../lib/imageCompress'
-import { friendlyAreaLabel } from '../lib/reverseGeocode'
-import { addPoints, addStoredReport } from '../lib/storage'
-import 'slick-carousel/slick/slick.css'
-import 'slick-carousel/slick/slick-theme.css'
+import { reverseGeocodeLabel } from '../lib/reverseGeocode'
+import { tryGpsFromPhotoFile } from '../lib/exifGeo'
 
-const categories = ['Street garbage', 'Broken light', 'Full dustbin', 'Open drain', 'Unsafe debris']
+const CATEGORIES = [
+  { id: 'garbage',     emoji: '🗑️', label: 'Garbage' },
+  { id: 'pothole',     emoji: '🕳️', label: 'Pothole' },
+  { id: 'streetlight', emoji: '💡', label: 'Streetlight' },
+  { id: 'drain',       emoji: '🌊', label: 'Drain' },
+  { id: 'water',       emoji: '💧', label: 'Water' },
+  { id: 'other',       emoji: '📌', label: 'Other' },
+] as const
 
-type LocState = 'idle' | 'locating' | 'ready' | 'error'
+type Category = typeof CATEGORIES[number]['id']
+type Step = 'photo' | 'details' | 'submitting' | 'done'
 
-function placeLine(label: string, maxLen = 52): string {
-  const s = friendlyAreaLabel(label).trim()
-  if (s.length <= maxLen) return s
-  return `${s.slice(0, maxLen - 1)}…`
+interface GeoInfo {
+  lat: number
+  lng: number
+  address: string
+  sector: string
+}
+
+async function uploadToCloudinary(file: File): Promise<string> {
+  const cloudName = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+  const uploadPreset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+  const formData = new FormData()
+  formData.append('file', file)
+  formData.append('upload_preset', uploadPreset)
+  formData.append('folder', 'click2clean')
+  const res = await fetch(
+    `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+    { method: 'POST', body: formData }
+  )
+  if (!res.ok) throw new Error('Photo upload failed')
+  const data = await res.json()
+  return data.secure_url
 }
 
 export default function ReportFlow() {
   const nav = useNavigate()
-  const [step, setStep] = useState<1 | 2>(1)
-  const [photoDataUrl, setPhotoDataUrl] = useState<string | null>(null)
-  const [geo, setGeo] = useState<GeoResult | null>(null)
-  const [geoSource, setGeoSource] = useState<'exif' | 'browser' | null>(null)
-  const [locState, setLocState] = useState<LocState>('idle')
-  const [geoError, setGeoError] = useState<string | null>(null)
-  const [category, setCategory] = useState(categories[0])
+  const [step, setStep] = useState<Step>('photo')
+  const [photoFile, setPhotoFile] = useState<File | null>(null)
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null)
+  const [category, setCategory] = useState<Category>('garbage')
   const [description, setDescription] = useState('')
-  const [reportId] = useState(() => `C2C-${Date.now().toString(36).toUpperCase()}`)
+  const [geo, setGeo] = useState<GeoInfo | null>(null)
+  const [geoLoading, setGeoLoading] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const [submitErr, setSubmitErr] = useState<string | null>(null)
 
-  const canContinueStep1 = !!photoDataUrl && locState === 'ready' && !!geo
-
-  async function onCaptureChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0]
-    if (!f) return
-    setGeo(null)
-    setGeoError(null)
-    setGeoSource(null)
-    setLocState('locating')
-
-    const dataUrl = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(String(reader.result))
-      reader.onerror = () => reject(new Error('Could not read photo'))
-      reader.readAsDataURL(f)
-    })
-    setPhotoDataUrl(dataUrl)
-
-    const fromExif = await tryGpsFromPhotoFile(f)
-    if (fromExif) {
-      setGeo(fromExif)
-      setGeoSource('exif')
-      setLocState('ready')
-      return
-    }
+  async function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setErr(null)
+    setGeoLoading(true)
 
     try {
-      const g = await requestLocation()
-      setGeo(g)
-      setGeoSource('browser')
-      setLocState('ready')
-    } catch (err) {
-      setGeoError((err as Error).message)
-      setLocState('error')
-    }
-  }
+      // Compress image
+      const dataUrl = await new Promise<string>((res) => {
+        const reader = new FileReader()
+        reader.onload = () => res(reader.result as string)
+        reader.readAsDataURL(file)
+      })
+      const compressedDataUrl = await compressDataUrlToJpeg(dataUrl)
+      const compressed = await fetch(compressedDataUrl)
+        .then(r => r.blob())
+        .then(b => new File([b], file.name, { type: 'image/jpeg' }))
 
-  async function retryBrowserLocation() {
-    if (!photoDataUrl) return
-    setLocState('locating')
-    setGeoError(null)
-    try {
-      const g = await requestLocation()
-      setGeo(g)
-      setGeoSource('browser')
-      setLocState('ready')
-    } catch (err) {
-      setGeoError((err as Error).message)
-      setLocState('error')
-    }
-  }
+      setPhotoFile(compressed)
+      setPhotoPreview(compressedDataUrl)
 
-  async function submit() {
-    if (!geo || !photoDataUrl) return
-
-    let photoToStore = photoDataUrl
-    try {
-      photoToStore = await compressDataUrlToJpeg(photoDataUrl)
-    } catch {
-      /* use original if compression fails */
-    }
-
-    const report = {
-      id: reportId,
-      title: category,
-      status: 'Submitted' as const,
-      lat: geo.lat,
-      lng: geo.lng,
-      areaLabel: geo.label,
-      createdAt: new Date().toISOString(),
-      photoDataUrl: photoToStore,
-      locationSource: geoSource ?? undefined,
-    }
-
-    try {
-      addStoredReport(report)
-    } catch {
+      // Try EXIF GPS first
+      let lat: number | null = null
+      let lng: number | null = null
       try {
-        const smaller = await compressDataUrlToJpeg(photoDataUrl, 720, 0.75).catch(() => photoToStore)
-        addStoredReport({ ...report, photoDataUrl: smaller })
-      } catch {
-        try {
-          addStoredReport({ ...report, photoDataUrl: undefined })
-        } catch {
-          /* still navigate */
-        }
+        const exif = await tryGpsFromPhotoFile(file)
+        if (exif) { lat = exif.lat; lng = exif.lng }
+      } catch { /* no exif */ }
+
+      // Fall back to browser GPS
+      if (!lat || !lng) {
+        const pos = await new Promise<GeolocationPosition>((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, {
+            enableHighAccuracy: true, timeout: 10000
+          })
+        )
+        lat = pos.coords.latitude
+        lng = pos.coords.longitude
       }
+
+      // Reverse geocode
+      const address = await reverseGeocodeLabel(lat, lng)
+      setGeo({
+        lat,
+        lng,
+        address: address ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
+        sector: address ?? 'Unknown Sector',
+      })
+    } catch (error) {
+      console.error('GPS error:', error)
+      setErr('Could not get location. Please enable GPS and try again.')
+    } finally {
+      setGeoLoading(false)
     }
+  }
+
+  function goToDetails() {
+    if (!photoFile) { setErr('Please take a photo first.'); return }
+    if (!geo) { setErr('Location not captured yet. Please wait.'); return }
+    setStep('details')
+  }
+
+  async function submitReport() {
+    if (!photoFile || !geo) return
+    setStep('submitting')
+    setSubmitErr(null)
 
     try {
-      addPoints(50)
-    } catch {
-      /* ignore */
-    }
+      // 1. Upload photo to Cloudinary
+      const photoUrl = await uploadToCloudinary(photoFile)
 
-    nav('/success', { replace: true, state: { reportId } })
+      // 2. Get phone from storage — stored as 10 digits
+      const phone10 = getPhone()
+      const fullPhone = `+91${phone10}`
+
+      // 3. Find or create user in Supabase
+      let { data: user } = await supabase
+        .from('users')
+        .select('id')
+        .eq('phone', fullPhone)
+        .maybeSingle()
+
+      if (!user) {
+        // Create user if doesn't exist
+        const { data: newUser, error: userError } = await supabase
+          .from('users')
+          .insert({ phone: fullPhone, language: 'en' })
+          .select('id')
+          .single()
+        if (userError) throw userError
+        user = newUser
+      }
+
+      // 4. Find matching ward (optional)
+      const { data: ward } = await supabase
+        .from('wards')
+        .select('id')
+        .ilike('name', `%${geo.sector}%`)
+        .maybeSingle()
+
+      // 5. Save report to Supabase
+      const { data: report, error: reportError } = await supabase
+        .from('reports')
+        .insert({
+          citizen_id: user!.id,
+          category,
+          description: description.trim() || null,
+          photo_url: photoUrl,
+          lat: geo.lat,
+          lng: geo.lng,
+          address: geo.address,
+          sector: geo.sector,
+          ward_id: ward?.id ?? null,
+          status: 'pending',
+          support_count: 0,
+        })
+        .select('id')
+        .single()
+
+      if (reportError) throw reportError
+
+      // 6. Add reward points
+      await supabase
+        .from('rewards')
+        .insert({
+          citizen_id: user!.id,
+          report_id: report.id,
+          points: 10,
+          reason: 'report_filed',
+        })
+
+      setStep('done')
+
+    } catch (error) {
+      console.error('Submit error:', error)
+      setSubmitErr('Failed to submit report. Please try again.')
+      setStep('details')
+    }
   }
 
   return (
-    <div className="mx-auto flex min-h-dvh max-w-lg flex-col px-4 pb-10 pt-4">
-      <div className="mb-4 flex items-center gap-2">
-        <Link
-          to="/"
-          className="flex h-10 w-10 items-center justify-center rounded-full bg-white/70 text-slate-800 shadow-sm ring-1 ring-white/80"
-          aria-label="Back to home"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div className="flex-1">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">New report</p>
-          <h1 className="text-lg font-bold text-slate-900">Click to Clean</h1>
-        </div>
-      </div>
+    <div className="min-h-dvh bg-gradient-to-br from-slate-50 to-blue-50">
 
-      <div className="mb-6 flex gap-2" aria-hidden>
-        {([1, 2] as const).map((s) => (
-          <div key={s} className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-200/80">
-            <motion.div
-              className="h-full rounded-full bg-blue-600"
-              initial={false}
-              animate={{ width: step >= s ? '100%' : '0%' }}
-              transition={{ duration: 0.35 }}
-            />
-          </div>
-        ))}
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-4">
+        <Link to="/" className="flex h-9 w-9 items-center justify-center rounded-full bg-white shadow">
+          <ArrowLeft size={18} />
+        </Link>
+        <h1 className="text-lg font-bold text-slate-900">Report Issue</h1>
       </div>
 
       <AnimatePresence mode="wait">
-        {step === 1 ? (
-          <motion.section
-            key="s1"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="space-y-4"
-          >
-            <div className="glass-panel-strong rounded-[28px] p-4">
-              <p className="text-sm font-semibold text-slate-800">Photo</p>
-              <p className="mt-1 text-sm text-slate-600">Capture the issue clearly—avoid people&apos;s faces.</p>
-              <label
-                className={[
-                  'mt-4 block w-full cursor-pointer rounded-3xl',
-                  photoDataUrl
-                    ? 'overflow-hidden ring-1 ring-slate-200/90'
-                    : 'flex flex-col items-center justify-center border-2 border-dashed border-blue-300/80 bg-sky-50/80 py-12',
-                ].join(' ')}
-              >
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="sr-only"
-                  onChange={onCaptureChange}
-                />
-                {photoDataUrl ? (
-                  <img
-                    src={photoDataUrl}
-                    alt="Captured issue"
-                    className="block max-h-[min(42vh,300px)] w-full object-cover object-center"
-                  />
+
+        {/* PHOTO STEP */}
+        {step === 'photo' && (
+          <motion.div key="photo" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="px-4 space-y-4">
+            <div className="rounded-3xl bg-white p-5 shadow-sm">
+              <h2 className="mb-3 font-semibold text-slate-800">📸 Take a Photo</h2>
+              <label className="block cursor-pointer">
+                <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={handlePhoto} />
+                {photoPreview ? (
+                  <div className="relative">
+                    <img src={photoPreview} alt="Issue" className="h-56 w-full rounded-2xl object-cover" />
+                    <div className="absolute bottom-2 right-2 rounded-full bg-black/60 p-2 text-white">
+                      <RefreshCw size={16} />
+                    </div>
+                  </div>
                 ) : (
-                  <>
-                    <span className="flex h-16 w-16 items-center justify-center rounded-3xl bg-blue-100 text-blue-700">
-                      <Camera className="h-8 w-8" />
-                    </span>
-                    <span className="mt-3 text-sm font-semibold text-blue-800">Tap to open camera</span>
-                    <span className="mt-1 text-xs text-slate-500">Camera capture only (no gallery picker)</span>
-                  </>
+                  <div className="flex h-56 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50">
+                    <Camera size={40} className="text-blue-400" />
+                    <p className="text-sm font-medium text-blue-600">Tap to take photo</p>
+                    <p className="text-xs text-slate-400">Photo + GPS captured automatically</p>
+                  </div>
                 )}
               </label>
-            </div>
-
-            <div className="glass-panel-strong rounded-[28px] p-4">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-800">Location</p>
-                {photoDataUrl && locState === 'locating' ? (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-600 px-3 py-1 text-xs font-semibold text-white">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                    Detecting…
-                  </span>
-                ) : null}
-                {photoDataUrl && locState === 'ready' && geo ? (
-                  <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800">
-                    {geoSource === 'exif' ? 'From photo' : 'Device'}
-                  </span>
-                ) : null}
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <MapPin size={14} className={geo ? 'text-green-500' : 'text-slate-400'} />
+                {geoLoading ? (
+                  <span className="text-slate-400 flex items-center gap-1"><Loader2 size={12} className="animate-spin" /> Getting location...</span>
+                ) : geo ? (
+                  <span className="text-green-600 font-medium">{geo.address}</span>
+                ) : (
+                  <span className="text-slate-400">Location captured with photo</span>
+                )}
               </div>
-              {!photoDataUrl ? (
-                <p className="mt-1 text-sm text-slate-600">Location is added after you capture a photo.</p>
-              ) : null}
+              {err && <p className="mt-2 text-sm text-red-500">{err}</p>}
+            </div>
+            <button onClick={goToDetails} disabled={!photoFile || geoLoading} className="w-full rounded-full bg-blue-600 py-3.5 text-base font-semibold text-white shadow disabled:opacity-50">
+              Next →
+            </button>
+          </motion.div>
+        )}
 
-              {photoDataUrl && locState === 'locating' ? (
-                <div className="mt-3 flex items-center gap-2 rounded-2xl bg-slate-100/90 px-3 py-3 text-sm text-slate-600">
-                  <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-600" aria-hidden />
-                  Pinpointing from photo GPS or device…
-                </div>
-              ) : null}
-
-              {photoDataUrl && locState === 'ready' && geo ? (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-emerald-50/90 px-3 py-2.5 ring-1 ring-emerald-200/80">
-                  <div className="flex min-w-0 items-center gap-2 text-sm text-emerald-900">
-                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" aria-hidden />
-                    <span className="truncate font-medium">{placeLine(geo.label)}</span>
-                  </div>
-                  <a
-                    href={mapsUrl(geo.lat, geo.lng)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex shrink-0 items-center gap-1 text-sm font-semibold text-blue-700 underline"
-                  >
-                    <MapPin className="h-4 w-4" aria-hidden />
-                    Map
-                  </a>
-                </div>
-              ) : null}
-
-              {photoDataUrl && locState === 'error' ? (
-                <div className="mt-3 rounded-2xl border border-red-200 bg-red-50/90 px-3 py-3">
-                  <p className="text-sm text-red-700" role="alert">
-                    {geoError}
-                  </p>
-                  <p className="mt-2 text-sm font-medium text-red-800">Could not lock a location yet.</p>
-                  <button
-                    type="button"
-                    onClick={retryBrowserLocation}
-                    className="mt-2 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-red-800 ring-1 ring-red-200"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" aria-hidden />
-                    Retry with device location
+        {/* DETAILS STEP */}
+        {step === 'details' && (
+          <motion.div key="details" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="px-4 space-y-4">
+            {photoPreview && <img src={photoPreview} alt="Issue" className="h-32 w-full rounded-2xl object-cover" />}
+            <div className="rounded-3xl bg-white p-5 shadow-sm">
+              <h2 className="mb-3 font-semibold text-slate-800">What is the issue?</h2>
+              <div className="grid grid-cols-3 gap-2">
+                {CATEGORIES.map(cat => (
+                  <button key={cat.id} onClick={() => setCategory(cat.id)}
+                    className={`flex flex-col items-center gap-1 rounded-2xl border-2 py-3 text-sm font-medium transition-all ${category === cat.id ? 'border-blue-500 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600'}`}>
+                    <span className="text-2xl">{cat.emoji}</span>
+                    {cat.label}
                   </button>
-                </div>
-              ) : null}
-            </div>
-
-            <div className="px-0.5">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Tips</p>
-              <Slider
-                dots={false}
-                infinite
-                speed={400}
-                slidesToShow={1}
-                slidesToScroll={1}
-                arrows={false}
-                autoplay
-                autoplaySpeed={5000}
-                className="tips-slider"
-              >
-                {tips.map((t) => (
-                  <div key={t} className="px-0.5 pb-1">
-                    <p className="tips-tip border-l-4 border-amber-400 bg-slate-50/95 py-3 pl-3 pr-3 text-sm leading-snug text-slate-700">
-                      {t}
-                    </p>
-                  </div>
                 ))}
-              </Slider>
-            </div>
-
-            <button
-              type="button"
-              disabled={!canContinueStep1}
-              onClick={() => setStep(2)}
-              className="w-full rounded-full bg-slate-500 py-3.5 text-base font-semibold text-white shadow-lg enabled:bg-blue-600 enabled:shadow-blue-600/20 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Continue
-            </button>
-          </motion.section>
-        ) : null}
-
-        {step === 2 && geo && photoDataUrl ? (
-          <motion.section
-            key="s2"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="space-y-4"
-          >
-            <button
-              type="button"
-              onClick={() => setStep(1)}
-              className="text-sm font-semibold text-blue-700 underline-offset-2 hover:underline"
-            >
-              Edit photo &amp; location
-            </button>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-white/60 px-3 py-2.5 ring-1 ring-slate-200/80">
-              <div className="flex min-w-0 items-center gap-2 text-sm text-slate-800">
-                <MapPin className="h-4 w-4 shrink-0 text-blue-600" aria-hidden />
-                <span className="truncate font-medium">{placeLine(geo.label)}</span>
               </div>
-              <a
-                href={mapsUrl(geo.lat, geo.lng)}
-                target="_blank"
-                rel="noreferrer"
-                className="shrink-0 text-sm font-semibold text-blue-700 underline"
-              >
-                Open map
-              </a>
             </div>
-
-            <div className="glass-panel-strong rounded-[28px] p-4">
-              <p className="text-sm font-semibold text-slate-800">Category</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {categories.map((c) => {
-                  const selected = category === c
-                  return (
-                    <button
-                      key={c}
-                      type="button"
-                      onClick={() => setCategory(c)}
-                      className={[
-                        'rounded-full border-2 px-3.5 py-2 text-sm font-semibold transition',
-                        selected
-                          ? 'border-blue-600 bg-blue-600 text-white shadow-md'
-                          : 'border-slate-200 bg-white/80 text-slate-700 ring-1 ring-slate-200/80 hover:border-slate-300',
-                      ].join(' ')}
-                    >
-                      {c}
-                    </button>
-                  )
-                })}
-              </div>
-
-              <label className="mt-5 block text-sm font-semibold text-slate-800" htmlFor="desc">
-                Details
-              </label>
-              <textarea
-                id="desc"
-                rows={4}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe what you see—landmarks help."
-                className="mt-2 w-full resize-none rounded-2xl border-0 bg-slate-100/90 px-3 py-3 text-sm text-slate-900 outline-none ring-2 ring-transparent focus:ring-blue-500"
-              />
-
-              <div className="mt-4 flex gap-3 rounded-2xl bg-slate-50/90 p-3 ring-1 ring-slate-200/80">
-                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-slate-200">
-                  <img
-                    src={photoDataUrl}
-                    alt=""
-                    className="h-full w-full object-cover object-center"
-                  />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase text-slate-500">Preview</p>
-                  <p className="mt-0.5 font-semibold text-slate-900">{category}</p>
-                  <p className="line-clamp-2 text-xs text-slate-600">{description || 'Add details above.'}</p>
+            <div className="rounded-3xl bg-white p-5 shadow-sm">
+              <h2 className="mb-3 font-semibold text-slate-800">Description (optional)</h2>
+              <textarea rows={3} placeholder="Describe the issue briefly..." value={description}
+                onChange={e => setDescription(e.target.value)} maxLength={200}
+                className="w-full rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-400 resize-none" />
+              <p className="mt-1 text-right text-xs text-slate-400">{description.length}/200</p>
+            </div>
+            {geo && (
+              <div className="rounded-3xl bg-white p-4 shadow-sm flex items-start gap-3">
+                <MapPin size={18} className="text-blue-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-slate-800">{geo.sector}</p>
+                  <p className="text-xs text-slate-400">{geo.address}</p>
                 </div>
               </div>
-
-              <p className="mt-4 text-center text-xs text-slate-500">
-                Ticket <span className="font-mono font-semibold text-slate-700">{reportId}</span>
-              </p>
+            )}
+            {submitErr && <p className="text-sm text-red-500 text-center">{submitErr}</p>}
+            <div className="flex gap-3 pb-8">
+              <button onClick={() => setStep('photo')} className="flex-1 rounded-full border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700">← Back</button>
+              <button onClick={submitReport} className="flex-[2] rounded-full bg-blue-600 py-3 text-base font-semibold text-white shadow">Submit Report</button>
             </div>
+          </motion.div>
+        )}
 
-            <button
-              type="button"
-              onClick={() => void submit()}
-              className="w-full rounded-full bg-lime-500 py-3.5 text-base font-semibold text-white shadow-md active:scale-[0.99]"
-            >
-              Submit &amp; raise ticket
-            </button>
-          </motion.section>
-        ) : null}
+        {/* SUBMITTING STEP */}
+        {step === 'submitting' && (
+          <motion.div key="submitting" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center gap-4 px-4 py-20">
+            <Loader2 size={48} className="animate-spin text-blue-500" />
+            <p className="text-lg font-semibold text-slate-700">Submitting your report...</p>
+            <p className="text-sm text-slate-400">Uploading photo and saving location</p>
+          </motion.div>
+        )}
+
+        {/* DONE STEP */}
+        {step === 'done' && (
+          <motion.div key="done" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center justify-center gap-5 px-4 py-20 text-center">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-green-100">
+              <CheckCircle2 size={48} className="text-green-500" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-slate-900">Report Submitted! 🎉</h2>
+              <p className="mt-1 text-slate-500">Your report is now live on the public map.</p>
+              <p className="mt-2 text-sm font-semibold text-blue-600">+10 points earned 🎉</p>
+            </div>
+            <div className="flex gap-3 w-full max-w-xs">
+              <button onClick={() => { setStep('photo'); setPhotoFile(null); setPhotoPreview(null); setGeo(null); setDescription(''); setErr(null) }}
+                className="flex-1 rounded-full border border-slate-300 bg-white py-3 text-sm font-semibold">Report Another</button>
+              <button onClick={() => nav('/')} className="flex-1 rounded-full bg-blue-600 py-3 text-sm font-semibold text-white">Go Home</button>
+            </div>
+          </motion.div>
+        )}
+
       </AnimatePresence>
     </div>
   )
