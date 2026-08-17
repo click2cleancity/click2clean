@@ -17,7 +17,7 @@ const Profile = lazy(() => import('./pages/Profile'))
 const Educate = lazy(() => import('./pages/Educate'))
 const ReportFlow = lazy(() => import('./pages/ReportFlow'))
 const Success = lazy(() => import('./pages/Success'))
-
+const PublicMap = lazy(() => import('./pages/PublicMap'))
 function PageLoader() {
   return (
     <div className="flex min-h-[40vh] items-center justify-center">
@@ -44,6 +44,7 @@ export default function App() {
             <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/phone" element={<PhoneEntry />} />
             <Route path="/otp" element={<Otp />} />
+            <Route path="/map" element={<PublicMap />} />
             <Route element={<RequireAuth />}>
               <Route element={<MainLayout />}>
                 <Route index element={<Home />} />

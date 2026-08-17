@@ -46,6 +46,6 @@ function webManifestPlugin(): Plugin {
 // https://vite.dev/config/
 // Set VITE_BASE=/your-repo-name/ when deploying to GitHub Pages (see GITHUB_SETUP.md).
 export default defineConfig({
-  base: process.env.VITE_BASE ?? '/',
+  base: '/click2clean/',
   plugins: [react(), tailwindcss(), webManifestPlugin()],
 })
