@@ -2,10 +2,11 @@
 -- Idempotent + fills missing values with dummy data + guarantees an SI per ward.
 begin;
 
--- 0) De-risk the role column: make it plain text so any role code inserts fine
---    (handles the case where staff_hierarchy.role is a Postgres enum).
+-- 0) De-risk the role column: make it plain text and drop any value restriction
+--    (handles both a Postgres enum and a CHECK constraint on role).
 alter table staff_hierarchy alter column role drop default;
 alter table staff_hierarchy alter column role type text using role::text;
+alter table staff_hierarchy drop constraint if exists staff_hierarchy_role_check;
 
 -- 1) Extra columns to hold roster detail
 alter table staff_hierarchy add column if not exists designation text;
