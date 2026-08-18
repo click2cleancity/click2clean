@@ -8,7 +8,8 @@ import { getPhone } from '../lib/storage'
 import { compressDataUrlToJpeg } from '../lib/imageCompress'
 import { reverseGeocodeLabel } from '../lib/reverseGeocode'
 import { tryGpsFromPhotoFile } from '../lib/exifGeo'
-import { validatePhoto, type ValidationResult } from '../lib/photoValidation'
+import { validateGarbagePhoto, type ValidationResult } from '../lib/photoValidation'
+import { getAccountability } from '../lib/accountability'
 
 const CATEGORIES = [
   { id: 'garbage',     emoji: '🗑️', label: 'Garbage' },
@@ -20,13 +21,14 @@ const CATEGORIES = [
 ] as const
 
 type Category = typeof CATEGORIES[number]['id']
-type Step = 'photo' | 'details' | 'validating' | 'submitting' | 'done'
+type Step = 'photo' | 'details' | 'validating' | 'preview' | 'submitting' | 'done'
 
 interface GeoInfo {
   lat: number
   lng: number
   address: string
   sector: string
+  accuracy?: number
 }
 
 async function uploadToCloudinary(file: File): Promise<string> {
@@ -58,6 +60,8 @@ export default function ReportFlow() {
   const [err, setErr] = useState<string | null>(null)
   const [submitErr, setSubmitErr] = useState<string | null>(null)
   const [validation, setValidation] = useState<ValidationResult | null>(null)
+  const [responsibleName, setResponsibleName] = useState<string | null>(null)
+  const [capturedAt, setCapturedAt] = useState<Date | null>(null)
 
   // Approximate fallback so a report is never blocked when GPS is unavailable.
   const FALLBACK_GEO = { lat: 19.033, lng: 73.029 } // Navi Mumbai
@@ -84,6 +88,7 @@ export default function ReportFlow() {
     try {
       let lat: number | null = null
       let lng: number | null = null
+      let accuracy: number | undefined
 
       // 1. Try EXIF GPS embedded in the photo
       if (file) {
@@ -98,6 +103,7 @@ export default function ReportFlow() {
         const pos = await getBrowserPosition()
         lat = pos.coords.latitude
         lng = pos.coords.longitude
+        accuracy = pos.coords.accuracy
       }
 
       const address = await reverseGeocodeLabel(lat, lng).catch(() => null)
@@ -106,6 +112,7 @@ export default function ReportFlow() {
         lng,
         address: address ?? 'Pinned location',
         sector: address ?? 'Unknown Sector',
+        accuracy,
       })
       setLocationExact(true)
     } catch (error) {
@@ -166,21 +173,40 @@ export default function ReportFlow() {
     setStep('details')
   }
 
-  // Quality check: run just before submission, after the issue is selected.
+  // Smart photo check: runs after the issue is selected, before submission.
   async function runValidation() {
     if (!photoPreview) return
     setValidation(null)
     setStep('validating')
+
+    let result: ValidationResult
     try {
       const img = new Image()
       img.src = photoPreview
       await img.decode()
-      const result = await validatePhoto(img, category)
-      setValidation(result)
+      result = await validateGarbagePhoto(img)
     } catch {
-      // Never block on an unexpected error in the check itself.
-      setValidation({ ok: true })
+      // Never hard-block on an unexpected error in the check itself.
+      result = { ok: true, garbageConfidence: 0.5, peopleBlurred: false }
     }
+    setValidation(result)
+
+    if (result.ok) {
+      // Use the privacy-blurred image for submission when people were blurred
+      if (result.processedDataUrl) {
+        setPhotoPreview(result.processedDataUrl)
+        try {
+          const blob = await (await fetch(result.processedDataUrl)).blob()
+          setPhotoFile(new File([blob], 'report.jpg', { type: 'image/jpeg' }))
+        } catch { /* keep original file */ }
+      }
+      setCapturedAt(new Date())
+      getAccountability(geo?.sector, geo?.address)
+        .then((a) => setResponsibleName(a.primary.name))
+        .catch(() => setResponsibleName(null))
+      setStep('preview')
+    }
+    // On failure we stay on the 'validating' step showing the reason + Retake.
   }
 
   function retakePhoto() {
@@ -299,10 +325,10 @@ export default function ReportFlow() {
                     </div>
                   </div>
                 ) : (
-                  <div className="flex h-56 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50">
+                  <div className="flex h-56 flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-blue-300 bg-blue-50 px-4 text-center">
                     <Camera size={40} className="text-blue-400" />
-                    <p className="text-sm font-medium text-blue-600">Tap to take photo</p>
-                    <p className="text-xs text-slate-400">Photo + GPS captured automatically</p>
+                    <p className="text-sm font-medium text-blue-600">Tap to capture the waste</p>
+                    <p className="text-xs text-slate-400">Capture the waste area clearly. Avoid people in the frame — location is added automatically.</p>
                   </div>
                 )}
               </label>
@@ -317,6 +343,9 @@ export default function ReportFlow() {
                 )}
               </div>
               {err && <p className="mt-2 text-sm text-amber-600">{err}</p>}
+              {geo && !geoLoading && geo.accuracy != null && geo.accuracy > 100 && (
+                <p className="mt-1 text-xs text-amber-600">Location accuracy is low. Move outdoors or enable precise location for a better pin.</p>
+              )}
               {photoFile && !geoLoading && (
                 <button
                   type="button"
@@ -397,39 +426,23 @@ export default function ReportFlow() {
                 <Loader2 size={40} className="animate-spin text-blue-500" />
                 <div>
                   <p className="text-lg font-semibold text-slate-800">Checking your photo…</p>
-                  <p className="mt-1 text-sm text-slate-500">Making sure your photo matches the reported issue.</p>
+                  <p className="mt-1 text-sm text-slate-500">Making sure the waste spot is clearly visible.</p>
                 </div>
               </>
             )}
 
-            {/* Verified */}
-            {validation?.ok && (
-              <>
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-                  <CheckCircle2 size={40} className="text-green-500" />
-                </div>
-                <div>
-                  <p className="text-lg font-semibold text-slate-800">Photo verified</p>
-                  <p className="mt-1 text-sm text-slate-500">Your photo matches the reported issue.</p>
-                </div>
-                <button onClick={submitReport}
-                  className="w-full max-w-xs rounded-full bg-blue-600 py-3.5 text-base font-semibold text-white shadow-lg">
-                  Submit Report
-                </button>
-              </>
-            )}
-
-            {/* Rejected */}
+            {/* Rejected — guidance, not just a block */}
             {validation && !validation.ok && (() => {
-              const label = CATEGORIES.find(c => c.id === category)?.label ?? 'issue'
               const copy =
-                validation.reason === 'person'
-                  ? { title: 'Person detected in photo', msg: 'For privacy and safety, photos containing people cannot be submitted. Please retake the photo without any person visible.' }
-                  : validation.reason === 'wrong_issue'
-                    ? { title: 'Photo doesn’t match the selected issue', msg: `This photo appears to show ${validation.detected ?? 'a different issue'}. Please capture a photo of the ${label.toLowerCase()}.` }
-                    : validation.reason === 'unrelated'
-                      ? { title: 'This photo doesn’t show a supported cleanliness issue', msg: 'Please capture a photo showing garbage, dumping, drainage blockage, or an overflowing dustbin.' }
-                      : { title: 'Photo is unclear', msg: 'Please capture a clearer photo where the cleanliness issue is clearly visible.' }
+                validation.reason === 'indoor'
+                  ? { title: 'Public waste location required', msg: 'This appears to be inside a building. Please capture a garbage spot on a public street, road or drain.' }
+                  : validation.reason === 'person_subject'
+                    ? { title: 'Please capture the waste spot', msg: 'The photo appears to focus on a person. Please point the camera towards the garbage or sanitation issue.' }
+                    : validation.reason === 'no_garbage'
+                      ? { title: 'Garbage not detected', msg: 'We couldn’t clearly detect a waste spot. Keep the garbage clearly inside the frame and capture again.' }
+                      : validation.reason === 'uncertain_garbage'
+                        ? { title: 'We’re not sure', msg: 'We couldn’t clearly identify the waste. Move a little closer so the waste spot is clearly visible.' }
+                        : { title: 'Photo is unclear', msg: 'Hold your phone steady and capture the waste again in good light.' }
               return (
                 <>
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
@@ -448,6 +461,67 @@ export default function ReportFlow() {
                 </>
               )
             })()}
+          </motion.div>
+        )}
+
+        {/* PREVIEW STEP — final review before submission */}
+        {step === 'preview' && validation?.ok && (
+          <motion.div key="preview" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }} className="px-4 space-y-4">
+
+            {/* Green confirmation */}
+            <div className="rounded-3xl bg-green-50 p-4 ring-1 ring-green-200">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={20} className="text-green-600" />
+                <p className="font-bold text-green-800">Waste detected</p>
+              </div>
+              <ul className="mt-2 space-y-1 text-sm text-green-800">
+                <li>✓ Waste detected</li>
+                <li>✓ Location detected</li>
+                <li>✓ People protected{validation.peopleBlurred ? ' (faces blurred)' : ''}</li>
+                <li>✓ Real-time photo</li>
+              </ul>
+            </div>
+
+            {photoPreview && (
+              <img src={photoPreview} alt="Report" className="h-52 w-full rounded-2xl object-cover" />
+            )}
+
+            <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Responsible person</p>
+                <p className="mt-0.5 font-semibold text-slate-800">{responsibleName ?? 'Being assigned…'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Issue location</p>
+                <p className="mt-0.5 text-sm text-slate-700">{geo?.address}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Detected issue</p>
+                <p className="mt-0.5 text-sm text-slate-700">
+                  {CATEGORIES.find(c => c.id === category)?.label ?? 'Waste'}
+                  {description.trim() ? ` — ${description.trim()}` : ''}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Captured</p>
+                <p className="mt-0.5 text-sm text-slate-700">
+                  {(capturedAt ?? new Date()).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })}
+                </p>
+              </div>
+            </div>
+
+            {submitErr && <p className="text-sm text-red-500 text-center">{submitErr}</p>}
+
+            <div className="space-y-2 pb-8">
+              <button onClick={submitReport}
+                className="w-full rounded-full bg-blue-600 py-3.5 text-base font-semibold text-white shadow-lg">
+                Submit Report
+              </button>
+              <button onClick={retakePhoto}
+                className="w-full rounded-full border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700">
+                Delete &amp; Recapture
+              </button>
+            </div>
           </motion.div>
         )}
 
