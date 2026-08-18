@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
-import { ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, RefreshCw } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, Camera, CheckCircle2, Loader2, MapPin, RefreshCw } from 'lucide-react'
 import { supabase } from '../supabase'
 import AccountabilityCard from '../components/AccountabilityCard'
 import { getPhone } from '../lib/storage'
 import { compressDataUrlToJpeg } from '../lib/imageCompress'
 import { reverseGeocodeLabel } from '../lib/reverseGeocode'
 import { tryGpsFromPhotoFile } from '../lib/exifGeo'
+import { validatePhoto, type ValidationResult } from '../lib/photoValidation'
 
 const CATEGORIES = [
   { id: 'garbage',     emoji: '🗑️', label: 'Garbage' },
@@ -19,7 +20,7 @@ const CATEGORIES = [
 ] as const
 
 type Category = typeof CATEGORIES[number]['id']
-type Step = 'photo' | 'details' | 'submitting' | 'done'
+type Step = 'photo' | 'details' | 'validating' | 'submitting' | 'done'
 
 interface GeoInfo {
   lat: number
@@ -56,6 +57,7 @@ export default function ReportFlow() {
   const [locationExact, setLocationExact] = useState(true)
   const [err, setErr] = useState<string | null>(null)
   const [submitErr, setSubmitErr] = useState<string | null>(null)
+  const [validation, setValidation] = useState<ValidationResult | null>(null)
 
   // Approximate fallback so a report is never blocked when GPS is unavailable.
   const FALLBACK_GEO = { lat: 19.033, lng: 73.029 } // Navi Mumbai
@@ -162,6 +164,32 @@ export default function ReportFlow() {
     if (geoLoading) { setErr('Getting location… please wait.'); return }
     if (!geo) { setErr('Location not captured yet. Please retry.'); return }
     setStep('details')
+  }
+
+  // Quality check: run just before submission, after the issue is selected.
+  async function runValidation() {
+    if (!photoPreview) return
+    setValidation(null)
+    setStep('validating')
+    try {
+      const img = new Image()
+      img.src = photoPreview
+      await img.decode()
+      const result = await validatePhoto(img, category)
+      setValidation(result)
+    } catch {
+      // Never block on an unexpected error in the check itself.
+      setValidation({ ok: true })
+    }
+  }
+
+  function retakePhoto() {
+    setPhotoFile(null)
+    setPhotoPreview(null)
+    setGeo(null)
+    setValidation(null)
+    setErr(null)
+    setStep('photo')
   }
 
   async function submitReport() {
@@ -349,8 +377,77 @@ export default function ReportFlow() {
             {submitErr && <p className="text-sm text-red-500 text-center">{submitErr}</p>}
             <div className="flex gap-3 pb-8">
               <button onClick={() => setStep('photo')} className="flex-1 rounded-full border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700">← Back</button>
-              <button onClick={submitReport} className="flex-[2] rounded-full bg-blue-600 py-3 text-base font-semibold text-white shadow">Submit Report</button>
+              <button onClick={runValidation} className="flex-[2] rounded-full bg-blue-600 py-3 text-base font-semibold text-white shadow">Continue</button>
             </div>
+          </motion.div>
+        )}
+
+        {/* VALIDATING STEP — quality check before submission */}
+        {step === 'validating' && (
+          <motion.div key="validating" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="flex flex-col items-center justify-center gap-5 px-6 py-16 text-center">
+
+            {photoPreview && (
+              <img src={photoPreview} alt="" className="h-36 w-36 rounded-3xl object-cover shadow-md" />
+            )}
+
+            {/* Checking */}
+            {validation === null && (
+              <>
+                <Loader2 size={40} className="animate-spin text-blue-500" />
+                <div>
+                  <p className="text-lg font-semibold text-slate-800">Checking your photo…</p>
+                  <p className="mt-1 text-sm text-slate-500">Making sure your photo matches the reported issue.</p>
+                </div>
+              </>
+            )}
+
+            {/* Verified */}
+            {validation?.ok && (
+              <>
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
+                  <CheckCircle2 size={40} className="text-green-500" />
+                </div>
+                <div>
+                  <p className="text-lg font-semibold text-slate-800">Photo verified</p>
+                  <p className="mt-1 text-sm text-slate-500">Your photo matches the reported issue.</p>
+                </div>
+                <button onClick={submitReport}
+                  className="w-full max-w-xs rounded-full bg-blue-600 py-3.5 text-base font-semibold text-white shadow-lg">
+                  Submit Report
+                </button>
+              </>
+            )}
+
+            {/* Rejected */}
+            {validation && !validation.ok && (() => {
+              const label = CATEGORIES.find(c => c.id === category)?.label ?? 'issue'
+              const copy =
+                validation.reason === 'person'
+                  ? { title: 'Person detected in photo', msg: 'For privacy and safety, photos containing people cannot be submitted. Please retake the photo without any person visible.' }
+                  : validation.reason === 'wrong_issue'
+                    ? { title: 'Photo doesn’t match the selected issue', msg: `This photo appears to show ${validation.detected ?? 'a different issue'}. Please capture a photo of the ${label.toLowerCase()}.` }
+                    : validation.reason === 'unrelated'
+                      ? { title: 'This photo doesn’t show a supported cleanliness issue', msg: 'Please capture a photo showing garbage, dumping, drainage blockage, or an overflowing dustbin.' }
+                      : { title: 'Photo is unclear', msg: 'Please capture a clearer photo where the cleanliness issue is clearly visible.' }
+              return (
+                <>
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
+                    <AlertTriangle size={34} className="text-red-500" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold text-slate-800">{copy.title}</p>
+                    <p className="mt-1 text-sm text-slate-500">{copy.msg}</p>
+                  </div>
+                  <div className="flex w-full max-w-xs gap-3">
+                    <button onClick={() => setStep('details')}
+                      className="flex-1 rounded-full border border-slate-300 bg-white py-3 text-sm font-semibold text-slate-700">Back</button>
+                    <button onClick={retakePhoto}
+                      className="flex-1 rounded-full bg-blue-600 py-3 text-sm font-semibold text-white shadow">Retake Photo</button>
+                  </div>
+                </>
+              )
+            })()}
           </motion.div>
         )}
 
