@@ -9,7 +9,6 @@ import { compressDataUrlToJpeg } from '../lib/imageCompress'
 import { reverseGeocodeLabel } from '../lib/reverseGeocode'
 import { tryGpsFromPhotoFile } from '../lib/exifGeo'
 import { validateGarbagePhoto, type ValidationResult } from '../lib/photoValidation'
-import { getAccountability } from '../lib/accountability'
 
 const CATEGORIES = [
   { id: 'garbage',     emoji: '🗑️', label: 'Garbage' },
@@ -60,7 +59,6 @@ export default function ReportFlow() {
   const [err, setErr] = useState<string | null>(null)
   const [submitErr, setSubmitErr] = useState<string | null>(null)
   const [validation, setValidation] = useState<ValidationResult | null>(null)
-  const [responsibleName, setResponsibleName] = useState<string | null>(null)
   const [capturedAt, setCapturedAt] = useState<Date | null>(null)
 
   // Approximate fallback so a report is never blocked when GPS is unavailable.
@@ -201,9 +199,6 @@ export default function ReportFlow() {
         } catch { /* keep original file */ }
       }
       setCapturedAt(new Date())
-      getAccountability(geo?.sector, geo?.address)
-        .then((a) => setResponsibleName(a.primary.name))
-        .catch(() => setResponsibleName(null))
       setStep('preview')
     }
     // On failure we stay on the 'validating' step showing the reason + Retake.
@@ -487,10 +482,6 @@ export default function ReportFlow() {
             )}
 
             <div className="rounded-3xl bg-white p-4 shadow-sm space-y-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Responsible person</p>
-                <p className="mt-0.5 font-semibold text-slate-800">{responsibleName ?? 'Being assigned…'}</p>
-              </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Issue location</p>
                 <p className="mt-0.5 text-sm text-slate-700">{geo?.address}</p>

@@ -3,7 +3,6 @@ import L from '../lib/leaflet'
 import '../lib/leafletHeat'
 import { supabase } from '../supabase'
 import { ArrowLeft, Filter, X } from 'lucide-react'
-import AccountabilityCard from '../components/AccountabilityCard'
 import { Link, useSearchParams } from 'react-router-dom'
 
 // ── Types ──────────────────────────────────────────
@@ -321,11 +320,6 @@ export default function PublicMap() {
               })}
             </span>
             <span className="text-xs text-slate-500">👀 {selectedReport.support_count} see this</span>
-          </div>
-
-          {/* Accountability — responsible SI + escalation for this location */}
-          <div className="mt-3">
-            <AccountabilityCard sector={selectedReport.sector} address={selectedReport.address} />
           </div>
         </div>
       )}

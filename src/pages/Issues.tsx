@@ -3,7 +3,6 @@ import { MapPin, X } from 'lucide-react'
 import { supabase } from '../supabase'
 import { getPhone } from '../lib/storage'
 import { formatReportWhen } from '../lib/time'
-import AccountabilityCard from '../components/AccountabilityCard'
 
 interface Report {
   id: string
@@ -195,8 +194,6 @@ export default function Issues() {
               </span>
               <span className="text-xs text-slate-500">👀 {selected.support_count} see this</span>
             </div>
-
-            <AccountabilityCard sector={selected.sector} address={selected.address} />
           </div>
         </div>
       )}
